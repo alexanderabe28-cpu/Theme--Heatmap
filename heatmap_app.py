@@ -151,9 +151,74 @@ def compute_changes(closes: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+@st.cache_data(ttl=QUOTE_TTL, show_spinner=False)
+def fetch_ohlc(ticker: str, period: str = "1y") -> pd.DataFrame:
+    """OHLCV fuer den Detail-Chart eines einzelnen Symbols."""
+    df = yf.download(ticker, period=period, auto_adjust=True,
+                     progress=False, group_by="column")
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+    return df.dropna(how="all")
+
+
+def render_detail_chart(ticker: str, label: str) -> None:
+    """Candlestick + EMA21/50 + Volumen unter der Heatmap."""
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+
+    with st.spinner(f"Lade Chart {ticker}..."):
+        d = fetch_ohlc(ticker)
+    if d.empty or "Close" not in d:
+        st.warning(f"Keine Chartdaten fuer {ticker}.")
+        return
+
+    ema21 = d["Close"].ewm(span=21, adjust=False).mean()
+    ema50 = d["Close"].ewm(span=50, adjust=False).mean()
+    has_vol = "Volume" in d and d["Volume"].fillna(0).sum() > 0
+
+    fig = make_subplots(rows=2 if has_vol else 1, cols=1, shared_xaxes=True,
+                        row_heights=[0.75, 0.25] if has_vol else [1.0],
+                        vertical_spacing=0.03)
+    fig.add_trace(go.Candlestick(
+        x=d.index, open=d["Open"], high=d["High"], low=d["Low"], close=d["Close"],
+        name=ticker, increasing=dict(line=dict(color=MINT), fillcolor=MINT),
+        decreasing=dict(line=dict(color="#e05a5a"), fillcolor="#e05a5a"),
+    ), row=1, col=1)
+    fig.add_trace(go.Scatter(x=d.index, y=ema21, name="EMA 21",
+                             line=dict(color="#ffd166", width=1.3)), row=1, col=1)
+    fig.add_trace(go.Scatter(x=d.index, y=ema50, name="EMA 50",
+                             line=dict(color="#7aa2ff", width=1.3)), row=1, col=1)
+    if has_vol:
+        colors = [MINT if c >= o else "#e05a5a"
+                  for o, c in zip(d["Open"], d["Close"])]
+        fig.add_trace(go.Bar(x=d.index, y=d["Volume"], name="Volumen",
+                             marker_color=colors, opacity=0.6), row=2, col=1)
+
+    fig.update_layout(
+        title=dict(text=f"{label} · {ticker} · 1 Jahr",
+                   font=dict(size=15, color="#fff")),
+        height=460, margin=dict(t=45, l=0, r=0, b=0),
+        paper_bgcolor=NAVY_BG, plot_bgcolor=NAVY_BG, font=dict(color="#fff"),
+        xaxis_rangeslider_visible=False, bargap=0.1,
+        legend=dict(orientation="h", y=1.10, x=1, xanchor="right"),
+    )
+    fig.update_xaxes(gridcolor="#243063", rangebreaks=[dict(bounds=["sat", "mon"])])
+    fig.update_yaxes(gridcolor="#243063")
+    st.plotly_chart(fig, use_container_width=True, key=f"detail_{ticker}")
+
+    last = float(d["Close"].iloc[-1])
+    st.caption(
+        f"Letzter Kurs {last:,.2f} · EMA21 {ema21.iloc[-1]:,.2f} "
+        f"({'darueber' if last >= ema21.iloc[-1] else 'darunter'}) · "
+        f"EMA50 {ema50.iloc[-1]:,.2f} "
+        f"({'darueber' if last >= ema50.iloc[-1] else 'darunter'})"
+    )
+
+
 # ---------------- Treemap-Renderer ----------------
 def render_treemap(df: pd.DataFrame, tf: str, limit: float, key: str,
-                   label_col: str = "Ticker") -> None:
+                   label_col: str = "Ticker") -> str | None:
+    """Zeichnet die Treemap und gibt den angeklickten Ticker zurueck (oder None)."""
     df = df.copy()
     fig = px.treemap(
         df,
@@ -185,7 +250,20 @@ def render_treemap(df: pd.DataFrame, tf: str, limit: float, key: str,
         font=dict(family="Arial Black, Arial, sans-serif", color="#ffffff"),
         coloraxis_colorbar=dict(title="%", tickfont=dict(color="#ffffff")),
     )
-    st.plotly_chart(fig, use_container_width=True, key=key)
+    st.caption("Tipp: Kachel anklicken -> Detail-Chart erscheint darunter.")
+    event = st.plotly_chart(fig, use_container_width=True, key=key,
+                            on_select="rerun", selection_mode="points")
+
+    # Angeklickte Kachel -> Ticker aufloesen (nur Blattebene, keine Gruppen)
+    try:
+        pts = event["selection"]["points"]
+    except (TypeError, KeyError):
+        pts = []
+    if not pts:
+        return None
+    label = pts[0].get("label")
+    hit = df[df[label_col] == label]
+    return None if hit.empty else str(hit["Ticker"].iloc[0])
 
 
 def prepare(universe: pd.DataFrame, closes: pd.DataFrame,
@@ -259,12 +337,14 @@ with tab_map:
             st.error("Keine Kursdaten – Ticker pruefen.")
         else:
             limit = TIMEFRAMES[tf][1]
-            render_treemap(df, tf, limit, key="map_stocks")
+            picked = render_treemap(df, tf, limit, key="map_stocks")
             st.caption(
                 f"{tf} = letzter Kurs vs. Close vor {TIMEFRAMES[tf][0]} Handelstag(en) · "
                 f"Skala ±{limit:.0f} % · Stand: {closes.index[-1]:%Y-%m-%d} · "
                 f"Quelle: {'IBKR' if use_ibkr else 'Yahoo (~15 min)'}"
             )
+            if picked:
+                render_detail_chart(picked, picked)
 
 # ----- Tab 2: Futures/Makro -----
 with tab_fut:
@@ -281,13 +361,18 @@ with tab_fut:
             st.error("Keine Futures-Daten.")
         else:
             limit_f = TIMEFRAMES_FUT[tff][1]
-            render_treemap(dff, tff, limit_f, key="map_fut", label_col="Name")
+            picked_f = render_treemap(dff, tff, limit_f, key="map_fut",
+                                      label_col="Name")
             st.caption(
                 f"{tff} = letzter Kurs vs. Close vor {TIMEFRAMES_FUT[tff][0]} Handelstag(en) · "
                 f"Skala ±{limit_f:.0f} % · Kacheln gleich gross · Stand: "
                 f"{closes_f.index[-1]:%Y-%m-%d} · Quelle: Yahoo. "
                 f"Hinweis: VIX/VIX3M sind hier roh dargestellt – gruen = Vola steigt."
             )
+            if picked_f:
+                nm = dff[dff["Ticker"] == picked_f]["Name"]
+                render_detail_chart(picked_f,
+                                    nm.iloc[0] if len(nm) else picked_f)
 
 # ----- Tab 3: Watchlist -----
 with tab_watch:
@@ -360,7 +445,11 @@ with tab_ovsd:
         st.error("Keine Sektordaten.")
     else:
         limit_o = TIMEFRAMES_FUT[tfo][1]      # Sektoren: engere Makro-Skala
-        render_treemap(dfo, tfo, limit_o, key="map_ovsd", label_col="Name")
+        picked_o = render_treemap(dfo, tfo, limit_o, key="map_ovsd",
+                                  label_col="Name")
+        if picked_o:
+            nm = dfo[dfo["Ticker"] == picked_o]["Name"]
+            render_detail_chart(picked_o, nm.iloc[0] if len(nm) else picked_o)
 
         # --- OvsD-Indikator: Offense-Komposit / Defense-Komposit ---
         import plotly.graph_objects as go
