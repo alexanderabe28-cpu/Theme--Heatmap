@@ -1,0 +1,47 @@
+Ticker,Theme
+QQQ,Broad Market
+IWM,Broad Market
+DIA,Broad Market
+SMH,Halbleiter
+SOXX,Halbleiter
+XSD,Halbleiter
+IGV,Software/Cloud
+SKYY,Software/Cloud
+CIBR,CyberSec/AI
+AIQ,CyberSec/AI
+PNQI,Internet/Social
+SOCL,Internet/Social
+IBOT,Robotik/Connect
+NXTG,Robotik/Connect
+KNCT,Robotik/Connect
+GENZ,Consumer-Trends
+CARZ,Auto/Mobility
+NUKZ,Nuklear/Uran
+URA,Nuklear/Uran
+XBI,Biotech/Health
+IBB,Biotech/Health
+XHS,Biotech/Health
+KRE,Financials
+XLF,Financials
+KIE,Financials
+KBWP,Financials
+PSP,Financials
+XLE,Energie
+XOP,Energie
+PXJ,Energie
+XLB,Materials/Mining
+XME,Materials/Mining
+XLI,Industrie/Transport
+IYT,Industrie/Transport
+SEA,Industrie/Transport
+PPA,Industrie/Transport
+XHB,Consumer
+XRT,Consumer
+PEJ,Consumer
+RWX,Real Estate
+GLD,Metalle
+SLV,Metalle
+TLT,Bonds/Rates
+TBT,Bonds/Rates
+SHM,Bonds/Rates
+DX-Y.NYB,USD-Index
