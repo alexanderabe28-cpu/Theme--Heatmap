@@ -220,6 +220,13 @@ def render_treemap(df: pd.DataFrame, tf: str, limit: float, key: str,
                    label_col: str = "Ticker") -> str | None:
     """Zeichnet die Treemap und gibt den angeklickten Ticker zurueck (oder None)."""
     df = df.copy()
+    # Langname fuer Kachel-Zeile 3 (gekuerzt, damit kleine Kacheln lesbar bleiben)
+    if "Name" in df.columns:
+        df["ShortName"] = df["Name"].astype(str).apply(
+            lambda s: s if len(s) <= 30 else s[:29] + "…")
+    else:
+        df["ShortName"] = ""
+        df["Name"] = df["Ticker"]
     fig = px.treemap(
         df,
         path=[px.Constant("Alle"), "Theme", label_col],
@@ -227,14 +234,15 @@ def render_treemap(df: pd.DataFrame, tf: str, limit: float, key: str,
         color=tf,
         color_continuous_scale=COLOR_SCALE,
         range_color=(-limit, limit),
-        custom_data=["Last", "1D", "1W", "2W", "4W", "Ticker"],
+        custom_data=["Last", "1D", "1W", "2W", "4W", "Ticker", "ShortName", "Name"],
     )
     idx = list(TIMEFRAMES.keys()).index(tf) + 1
     fig.update_traces(
-        texttemplate="<b>%{label}</b><br>%{customdata[" + str(idx) + "]:.2f} %",
+        texttemplate=("<b>%{label}</b><br>%{customdata[" + str(idx) + "]:.2f} %"
+                      "<br><span style='font-size:10px'>%{customdata[6]}</span>"),
         textposition="middle center",
         hovertemplate=(
-            "<b>%{customdata[5]}</b> · %{label}<br>"
+            "<b>%{customdata[5]}</b> · %{customdata[7]}<br>"
             "Kurs: %{customdata[0]:,.2f}<br>"
             "1D: %{customdata[1]:.2f} %<br>"
             "1W: %{customdata[2]:.2f} %<br>"
@@ -344,7 +352,8 @@ with tab_map:
                 f"Quelle: {'IBKR' if use_ibkr else 'Yahoo (~15 min)'}"
             )
             if picked:
-                render_detail_chart(picked, picked)
+                nm = df[df["Ticker"] == picked]["Name"]
+                render_detail_chart(picked, nm.iloc[0] if len(nm) else picked)
 
 # ----- Tab 2: Futures/Makro -----
 with tab_fut:
