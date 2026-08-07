@@ -387,7 +387,7 @@ with tab_fut:
 with tab_watch:
     wl = load_csv(WATCHLIST_FILE) if os.path.exists(WATCHLIST_FILE) else pd.DataFrame(
         columns=["Ticker", "Theme", "Name"])
-    col_l, col_r = st.columns([2, 1])
+    col_l, col_r = st.columns([3, 1])
     with col_r:
         st.caption("Ticker pflegen (Yahoo-Notation):")
         wl_edit = st.data_editor(
@@ -422,8 +422,11 @@ with tab_watch:
                       .map(col_pct, subset=["1D", "1W", "2W", "4W"])
                       .format({"Kurs": "{:,.2f}", "1D": "{:+.2f} %", "1W": "{:+.2f} %",
                                "2W": "{:+.2f} %", "4W": "{:+.2f} %"}))
-            st.dataframe(styled, use_container_width=True, hide_index=True,
-                         height=42 + 35 * len(tbl))
+            st.caption("Tipp: Kaestchen links neben dem Ticker anklicken "
+                       "-> Detail-Chart erscheint darunter.")
+            ev = st.dataframe(styled, use_container_width=True, hide_index=True,
+                              height=42 + 35 * len(tbl), key="wl_table",
+                              on_select="rerun", selection_mode="single-row")
             missing_w = tbl[tbl["1D"].isna()]["Ticker"].tolist()
             if missing_w:
                 st.caption(f"Ohne Daten: {', '.join(missing_w)}")
@@ -431,6 +434,13 @@ with tab_watch:
                 f"Sortiert nach 1D · Stand: {closes_w.index[-1]:%Y-%m-%d} · "
                 f"Quelle: Yahoo (~15 min)"
             )
+            try:
+                rows = ev["selection"]["rows"]
+            except (TypeError, KeyError):
+                rows = []
+            if rows:
+                sym = str(tbl.iloc[rows[0]]["Ticker"])
+                render_detail_chart(sym, sym)
 
 # ----- Tab 4: OvsD (Offensiv vs. Defensiv) -----
 OVSD_UNIVERSE = pd.DataFrame({
