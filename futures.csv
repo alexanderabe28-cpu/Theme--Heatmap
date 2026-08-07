@@ -4,6 +4,12 @@ NQ=F,Equity-Futures,Nasdaq 100
 RTY=F,Equity-Futures,Russell 2000
 YM=F,Equity-Futures,Dow Jones
 GC=F,Metalle,Gold
+SI=F,Metalle,Silber
+HG=F,Metalle,Kupfer
+CL=F,Energie,WTI Crude
+BZ=F,Energie,Brent Crude
+HO=F,Energie,Heizoel
+RB=F,Energie,Benzin RBOB
 DX-Y.NYB,FX,Dollar-Index
 JPY=X,FX,USD/JPY
 EURUSD=X,FX,EUR/USD
