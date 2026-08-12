@@ -221,6 +221,14 @@ def compute_breadth(extra_symbols: tuple) -> dict:
         res["dn_vol"] = int(((chg < 0) & hivol).sum())
     res["up4"] = int((chg >= 0.04).sum()); res["dn4"] = int((chg <= -0.04).sum())
 
+    # Above/Below SMA50 und SMA200
+    sma50 = C.rolling(50).mean().iloc[-1]
+    res["ab50"] = int((last > sma50).sum())
+    res["bl50"] = int((last < sma50).sum())
+    sma200_last = C.rolling(200).mean().iloc[-1]
+    res["ab200"] = int((last > sma200_last).sum())
+    res["bl200"] = int((last < sma200_last).sum())
+
     # Stage-Analyse
     sma200 = C.rolling(200).mean()
     slope = sma200.iloc[-1] / sma200.iloc[-21] - 1
@@ -435,10 +443,10 @@ ms = {"Aus": 0, "30 s": 30_000, "60 s": 60_000, "5 min": 300_000}[interval]
 if ms:
     st_autorefresh(interval=ms, key="auto_refresh")
 
-(tab_map, tab_fut, tab_watch, tab_ovsd, tab_breadth, tab_themes,
- tab_universe) = st.tabs(
-    ["Aktien / ETF", "Futures / Makro", "Watchlist", "OvsD", "Breadth",
-     "Theme Tracker", "Universum"])
+(tab_map, tab_idx, tab_fut, tab_watch, tab_ovsd, tab_gen, tab_breadth,
+ tab_themes, tab_universe) = st.tabs(
+    ["Aktien / ETF", "Index-Maps", "Futures / Makro", "Watchlist", "OvsD",
+     "Generaele", "Breadth", "Theme Tracker", "Universum"])
 
 # ----- Tab 1: Aktien/ETF -----
 with tab_map:
@@ -703,28 +711,121 @@ with tab_ovsd:
             f"{reg_txt} · Stand: {c.index[-1]:%Y-%m-%d}"
         )
 
+# ----- Tab: Generaele (Mega-Cap-Baskets vs. Fussvolk) -----
+GENERALS_FILE = os.path.join(BASE, "generals.csv")
+
+with tab_gen:
+    if not os.path.exists(GENERALS_FILE):
+        st.error("generals.csv fehlt im App-Ordner.")
+    else:
+        gcol1, gcol2 = st.columns([3, 2])
+        with gcol1:
+            tfg = st.radio("Zeitfenster", list(TIMEFRAMES.keys()),
+                           horizontal=True, label_visibility="collapsed",
+                           key="tf_gen")
+        with gcol2:
+            agg_mode = st.radio("Aggregation", ["Median", "Mean"],
+                                horizontal=True, key="gen_agg",
+                                label_visibility="collapsed")
+
+        gens = pd.read_csv(GENERALS_FILE)
+        gens["Ticker"] = gens["Ticker"].astype(str).str.upper().str.strip()
+        ew_map = gens.groupby("Sektor")["EW_ETF"].first().to_dict()
+        allsyms = tuple(sorted(set(gens["Ticker"])
+                               | set(gens["EW_ETF"].dropna()) | {"SPY"}))
+        with st.spinner("Lade Generaele..."):
+            closes_g = fetch_closes(allsyms)
+        chg_g = compute_changes(closes_g)[tfg]
+
+        spy = chg_g.get("SPY", np.nan)
+        rows = []
+        for sek, grp in gens.groupby("Sektor"):
+            vals = chg_g.reindex(grp["Ticker"]).dropna()
+            if vals.empty:
+                continue
+            agg = vals.median() if agg_mode == "Median" else vals.mean()
+            ew = chg_g.get(ew_map.get(sek), np.nan)
+            rows.append({
+                "Sektor": sek,
+                "Generaele %": agg,
+                "vs SPY %": agg - spy,
+                "Fussvolk (EW-ETF) %": ew,
+                "Spread G-EW %": agg - ew if pd.notna(ew) else np.nan,
+                "Staerkster": f"{vals.idxmax()} {vals.max():+.1f}%",
+                "Schwaechster": f"{vals.idxmin()} {vals.min():+.1f}%",
+            })
+        gdf = (pd.DataFrame(rows)
+               .sort_values("vs SPY %", ascending=False)
+               .reset_index(drop=True))
+
+        num_cols = ["Generaele %", "vs SPY %", "Fussvolk (EW-ETF) %",
+                    "Spread G-EW %"]
+        st.dataframe(
+            gdf.style
+            .map(col_pct, subset=num_cols)
+            .format({c: "{:+.2f} %" for c in num_cols}),
+            use_container_width=True, hide_index=True,
+            height=42 + 35 * len(gdf),
+        )
+        st.caption(
+            f"SPY {tfg}: {spy:+.2f} % · Baskets equal-weight "
+            f"({agg_mode}) · Fussvolk = Invesco Equal-Weight-Sektor-ETF · "
+            f"Spread > 0: Generaele fuehren, Spread < 0: Breite fuehrt · "
+            f"Stand: {closes_g.index[-1]:%Y-%m-%d}"
+        )
+
+        # Mitglieder-Detail: Sektor waehlen
+        sel_g = st.selectbox("Basket-Detail", ["–"] + gdf["Sektor"].tolist(),
+                             label_visibility="collapsed")
+        if sel_g != "–":
+            grp = gens[gens["Sektor"] == sel_g]
+            mem = pd.DataFrame({
+                "Ticker": grp["Ticker"],
+                f"{tfg} %": chg_g.reindex(grp["Ticker"]).values,
+            }).dropna()
+            mem["vs SPY %"] = mem[f"{tfg} %"] - spy
+            mem = mem.sort_values(f"{tfg} %", ascending=False)
+            st.dataframe(
+                mem.style
+                .map(col_pct, subset=[f"{tfg} %", "vs SPY %"])
+                .format({f"{tfg} %": "{:+.2f} %", "vs SPY %": "{:+.2f} %"}),
+                use_container_width=True, hide_index=True,
+            )
+        st.caption("Baskets editierbar im Tab 'Universum' (generals.csv): "
+                   "Ticker, Sektor, EW_ETF.")
+
 # ----- Tab 5: Breadth -----
-def breadth_bar(title: str, up: int, down: int,
-                up_lbl: str = "Up", dn_lbl: str = "Down") -> None:
+def breadth_card(left_lbl: str, right_lbl: str, up: int, down: int,
+                 mid_lbl: str = "") -> str:
+    """Kompakte Karte im Stil der TradingView-Leiste: gruen links, rot rechts,
+    geteilter Balken. Gibt HTML zurueck."""
     total = max(up + down, 1)
-    pct = up / total * 100
-    st.markdown(
-        f"""<div style="margin:14px 0 4px">
-        <div style="display:flex;justify-content:space-between">
-          <span style="color:#fff;font-weight:800">{title}</span>
-          <span style="color:{MINT if pct >= 50 else '#e05a5a'};
-                       font-weight:900">{pct:.0f} %</span>
-        </div>
-        <div style="background:#243063;border-radius:6px;height:12px;
-                    overflow:hidden;margin:6px 0">
-          <div style="background:{MINT};width:{pct:.1f}%;height:100%"></div>
-        </div>
-        <div style="display:flex;justify-content:space-between;font-size:13px">
-          <span style="color:{MINT};font-weight:700">{up} {up_lbl}</span>
-          <span style="color:#e05a5a;font-weight:700">{down} {dn_lbl}</span>
-        </div></div>""",
-        unsafe_allow_html=True,
-    )
+    lp, rp = up / total * 100, down / total * 100
+    mid = (f"<span style='color:#9fb0e8;font-size:12px'>{mid_lbl}</span>"
+           if mid_lbl else "")
+    html = f"""
+    <div style="background:#10182f;border:1px solid #243063;border-radius:8px;
+                padding:10px 12px;flex:1;min-width:230px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <span style="color:{MINT};font-weight:800;font-size:13px">{left_lbl}</span>
+        {mid}
+        <span style="color:#e05a5a;font-weight:800;font-size:13px">{right_lbl}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin:3px 0 6px">
+        <span style="color:{MINT};font-size:13px;font-weight:700">
+          {lp:.1f} % ({up})</span>
+        <span style="color:#e05a5a;font-size:13px;font-weight:700">
+          ({down}) {rp:.1f} %</span>
+      </div>
+      <div style="display:flex;height:7px;border-radius:4px;overflow:hidden;
+                  background:#243063">
+        <div style="background:{MINT};width:{lp:.1f}%"></div>
+        <div style="width:2px"></div>
+        <div style="background:#e05a5a;width:{rp:.1f}%"></div>
+      </div>
+    </div>"""
+    # Einzeilig ausgeben: eingerueckte Zeilen wuerden Markdown-Codebloecke ausloesen
+    return " ".join(line.strip() for line in html.splitlines())
 
 
 with tab_breadth:
@@ -744,20 +845,27 @@ with tab_breadth:
         if not b:
             st.error("Breadth-Daten unvollstaendig – Universum pruefen.")
         else:
-            c1, c2 = st.columns(2)
-            with c1:
-                breadth_bar("New Highs vs New Lows", b["nh"], b["nl"],
-                            "Highs", "Lows")
-                breadth_bar("Advance vs Decline", b["adv"], b["dec"],
-                            "Advance", "Decline")
-                if "up_open" in b:
-                    breadth_bar("Up from Open vs Down from Open",
-                                b["up_open"], b["dn_open"])
-            with c2:
-                if "up_vol" in b:
-                    breadth_bar("Up on Volume vs Down on Volume",
-                                b["up_vol"], b["dn_vol"])
-                breadth_bar("Up 4% vs Down 4%", b["up4"], b["dn4"])
+            row1 = (
+                breadth_card("Advancing", "Declining", b["adv"], b["dec"])
+                + breadth_card("New High", "New Low", b["nh"], b["nl"])
+                + breadth_card("Above", "Below", b["ab50"], b["bl50"], "SMA50")
+                + breadth_card("Above", "Below", b["ab200"], b["bl200"],
+                               "SMA200")
+            )
+            st.markdown(
+                f"<div style='display:flex;gap:10px;flex-wrap:wrap'>{row1}</div>",
+                unsafe_allow_html=True)
+            row2 = (
+                breadth_card("Up from Open", "Down from Open",
+                             b.get("up_open", 0), b.get("dn_open", 0))
+                + breadth_card("Up on Volume", "Down on Volume",
+                               b.get("up_vol", 0), b.get("dn_vol", 0))
+                + breadth_card("Up 4%", "Down 4%", b["up4"], b["dn4"])
+            )
+            st.markdown(
+                f"<div style='display:flex;gap:10px;flex-wrap:wrap;"
+                f"margin-top:10px'>{row2}</div>",
+                unsafe_allow_html=True)
 
             # Stage-Analyse als gestapelter Balken
             s1, s2_, s3, s4 = b["stages"]
@@ -789,6 +897,119 @@ with tab_breadth:
                 f"Universum: {b['n']} Titel · Stand: {b['date']} · "
                 "Up/Down on Volume = Tagesrichtung bei Volumen ueber dem "
                 "50-Tage-Schnitt · NH/NL = 252-Tage-Extreme."
+            )
+
+# ----- Tab: Index-Maps (Finviz-Stil) -----
+INDEX_FILES = {
+    "S&P 500 (All Stocks)": ("idx_sp500.csv", True),
+    "Nasdaq 100": ("idx_nasdaq100.csv", True),
+    "Dow Jones 30": ("idx_dow.csv", False),
+    "Small Caps (S&P 600 als Russell-Proxy)": ("idx_smallcap.csv", True),
+}
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_index_ohlcv(tickers: tuple) -> tuple:
+    """Closes + Volumen fuer eine Index-Konstituentenliste (10 min Cache).
+    Wichtig: ohne Cache wuerde Streamlit diesen Download bei JEDEM Rerun
+    ausfuehren (alle Tab-Bloecke laufen pro Interaktion)."""
+    raw = yf.download(list(tickers), period="6mo", auto_adjust=True,
+                      progress=False, group_by="column", threads=True)
+    closes = raw["Close"].dropna(how="all")
+    vol = raw["Volume"] if "Volume" in raw else None
+    return closes, vol
+
+
+with tab_idx:
+    col_sel, col_tf = st.columns([2, 3])
+    with col_sel:
+        idx_choice = st.selectbox("Index", list(INDEX_FILES.keys()),
+                                  label_visibility="collapsed")
+    with col_tf:
+        tfi = st.radio("Zeitfenster", list(TIMEFRAMES.keys()), horizontal=True,
+                       label_visibility="collapsed", key="tf_idx")
+
+    fname, use_industry = INDEX_FILES[idx_choice]
+    fpath = os.path.join(BASE, fname)
+    if not os.path.exists(fpath):
+        st.error(f"{fname} fehlt im App-Ordner.")
+    elif not st.session_state.get("idx_on"):
+        st.button("Index-Map laden (S&P 500 / Small Caps: ~1-2 Min beim "
+                  "ersten Mal, danach 10 min gecacht)", key="idx_btn",
+                  on_click=lambda: st.session_state.update(idx_on=True))
+    else:
+        idx_uni = pd.read_csv(fpath)
+        idx_uni["Ticker"] = idx_uni["Ticker"].astype(str).str.upper().str.strip()
+        n_titles = len(idx_uni)
+        with st.spinner(f"Lade {n_titles} Titel..."):
+            closes_i, vol_i = fetch_index_ohlcv(tuple(idx_uni["Ticker"]))
+
+        chg_i = compute_changes(closes_i)
+        dfi = idx_uni.merge(chg_i, left_on="Ticker", right_index=True,
+                            how="left").dropna(subset=[tfi])
+        if dfi.empty:
+            st.error("Keine Kursdaten geladen.")
+        else:
+            # Kachelgroesse: Dollar-Volumen (20 Tage) statt Market Cap –
+            # aus demselben Download berechenbar, kein Extra-Abruf pro Titel.
+            if vol_i is not None:
+                dv = (closes_i.iloc[-20:] * vol_i.iloc[-20:]).mean()
+                dfi["Size"] = np.sqrt(dfi["Ticker"].map(dv).fillna(dv.median())
+                                      .clip(lower=1))
+            else:
+                dfi["Size"] = 1.0
+
+            limit_i = TIMEFRAMES[tfi][1]
+            path = ([px.Constant("Alle"), "Sector", "Industry", "Ticker"]
+                    if use_industry and "Industry" in dfi.columns
+                    else [px.Constant("Alle"), "Sector", "Ticker"])
+            dfi["ShortName"] = dfi["Name"].astype(str).str.slice(0, 28)
+
+            figi = px.treemap(
+                dfi, path=path, values="Size", color=tfi,
+                color_continuous_scale=COLOR_SCALE,
+                range_color=(-limit_i, limit_i),
+                custom_data=["Last", "1D", "1W", "2W", "4W", "Ticker", "Name"],
+            )
+            idxp = list(TIMEFRAMES.keys()).index(tfi) + 1
+            figi.update_traces(
+                texttemplate="<b>%{label}</b><br>%{customdata["
+                             + str(idxp) + "]:.2f} %",
+                textposition="middle center",
+                hovertemplate=(
+                    "<b>%{customdata[5]}</b> · %{customdata[6]}<br>"
+                    "Kurs: %{customdata[0]:,.2f}<br>"
+                    "1D: %{customdata[1]:.2f} % · 1W: %{customdata[2]:.2f} %<br>"
+                    "2W: %{customdata[3]:.2f} % · 4W: %{customdata[4]:.2f} %"
+                    "<extra></extra>"
+                ),
+                marker=dict(line=dict(width=0.7, color=NAVY_BG)),
+            )
+            figi.update_layout(
+                margin=dict(t=10, l=0, r=0, b=0), height=760,
+                paper_bgcolor=NAVY_BG,
+                font=dict(family="Arial, sans-serif", color="#ffffff"),
+                coloraxis_colorbar=dict(title="%",
+                                        tickfont=dict(color="#ffffff")),
+            )
+            st.caption("Tipp: Kachel anklicken -> Detail-Chart. Sektor-Kopf "
+                       "anklicken -> Zoom in den Sektor, 'Alle' oben fuehrt "
+                       "zurueck.")
+            evi = st.plotly_chart(figi, use_container_width=True, key="map_idx",
+                                  on_select="rerun", selection_mode="points")
+            try:
+                ipts = evi["selection"]["points"]
+            except (TypeError, KeyError):
+                ipts = []
+            if ipts:
+                lab = ipts[0].get("label")
+                hit = dfi[dfi["Ticker"] == lab]
+                if not hit.empty:
+                    render_detail_chart(lab, hit["Name"].iloc[0])
+            st.caption(
+                f"{idx_choice} · {len(dfi)} Titel · Kachelgroesse = "
+                f"Dollar-Volumen (20T-Schnitt), nicht Market Cap · "
+                f"Stand: {closes_i.index[-1]:%Y-%m-%d} · Quelle: Yahoo. "
+                f"Konstituenten via Wikipedia-Listen (idx_*.csv, editierbar)."
             )
 
 # ----- Tab 6: Theme Tracker -----
@@ -882,6 +1103,19 @@ with tab_universe:
                             use_container_width=True, key="ed_stocks")
     if st.button("Aktien/ETF speichern", type="primary"):
         save_csv(edited, TICKER_FILE)
+        st.cache_data.clear()
+        st.success("Gespeichert.")
+    st.divider()
+    st.caption("Generaele-Baskets (generals.csv) – Spalten: Ticker, Sektor, "
+               "EW_ETF (Equal-Weight-Vergleichs-ETF des Sektors).")
+    edited_g = st.data_editor(pd.read_csv(GENERALS_FILE)
+                              if os.path.exists(GENERALS_FILE)
+                              else pd.DataFrame(columns=["Ticker", "Sektor",
+                                                         "EW_ETF"]),
+                              num_rows="dynamic", use_container_width=True,
+                              key="ed_gen")
+    if st.button("Generaele speichern"):
+        edited_g.to_csv(GENERALS_FILE, index=False)
         st.cache_data.clear()
         st.success("Gespeichert.")
     st.divider()
