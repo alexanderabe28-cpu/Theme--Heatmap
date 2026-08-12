@@ -353,12 +353,11 @@ def fetch_signals(tickers: tuple) -> pd.DataFrame:
     # Session-Fortschritt (US-Boerse 9:30-16:00 ET) fuer Run-Rate
     now_et = pd.Timestamp.now(tz="America/New_York")
     frac = 1.0
-    use_prev_vol = False        # Pre-Market: heutige Teilzeile ignorieren
+    live_bar = False            # letzter Bar = heutige (laufende/fertige) Session?
     if C.index[-1].date() == now_et.date():
         mins = (now_et.hour * 60 + now_et.minute) - (9 * 60 + 30)
-        if mins <= 0:
-            use_prev_vol = True
-        else:
+        if mins > 0:
+            live_bar = True
             frac = min(max(mins / 390.0, 0.08), 1.0)
 
     out = {}
@@ -367,16 +366,24 @@ def fetch_signals(tickers: tuple) -> pd.DataFrame:
         if len(c) < 60:
             continue
         v = V[t].reindex(c.index)
-        v50 = v.iloc[-51:-1].mean()
-        v_now = v.iloc[-2] if use_prev_vol and len(v) > 1 else v.iloc[-1]
-        rvol = (v_now / frac) / v50 if v50 and v50 > 0 else np.nan
+        if live_bar:
+            v50 = v.iloc[-51:-1].mean()
+            rvol_live = (v.iloc[-1] / frac) / v50 if v50 and v50 > 0 else np.nan
+            v50p = v.iloc[-52:-2].mean()
+            rvol_prev = v.iloc[-2] / v50p if v50p and v50p > 0 else np.nan
+        else:
+            # Pre-Market/nach Feierabend: letzter Bar = kompletter Vortag
+            rvol_live = np.nan
+            v50 = v.iloc[-51:-1].mean()
+            rvol_prev = v.iloc[-1] / v50 if v50 and v50 > 0 else np.nan
         h, l = H[t].reindex(c.index), L[t].reindex(c.index)
         tr = pd.concat([h - l, (h - c.shift()).abs(),
                         (l - c.shift()).abs()], axis=1).max(axis=1)
         atr14 = tr.ewm(alpha=1 / 14, adjust=False).mean().iloc[-1]
         ema21 = c.ewm(span=21, adjust=False).mean().iloc[-1]
         ext = (c.iloc[-1] - ema21) / atr14 if atr14 and atr14 > 0 else np.nan
-        out[t] = {"RVOL": rvol, "ATRext": ext}
+        out[t] = {"RVOL_live": rvol_live, "RVOL_prev": rvol_prev,
+                  "ATRext": ext}
     return pd.DataFrame(out).T
 
 
@@ -402,10 +409,16 @@ def render_treemap(df: pd.DataFrame, tf: str, limit: float, key: str,
     if signals is not None:
         df = df.merge(signals, left_on="Ticker", right_index=True, how="left")
     else:
-        df["RVOL"] = np.nan
+        df["RVOL_live"] = np.nan
+        df["RVOL_prev"] = np.nan
         df["ATRext"] = np.nan
-    df["RVOLtxt"] = df["RVOL"].apply(
-        lambda v: f"{v:.2f}" if pd.notna(v) else "–")
+    # Rahmen-Trigger: live wenn Session laeuft, sonst Vortag
+    df["RVOL_hot"] = df["RVOL_live"].fillna(df["RVOL_prev"])
+    df["RVOLtxt"] = df.apply(
+        lambda r: (f"live {r.RVOL_live:.2f} · VT {r.RVOL_prev:.2f}"
+                   if pd.notna(r.RVOL_live)
+                   else (f"VT {r.RVOL_prev:.2f}" if pd.notna(r.RVOL_prev)
+                         else "–")), axis=1)
     df["EXTtxt"] = df["ATRext"].apply(
         lambda v: f"{v:+.1f}" if pd.notna(v) else "–")
     # Langname fuer Kachel-Zeile 3 (gekuerzt, damit kleine Kacheln lesbar bleiben)
@@ -444,13 +457,12 @@ def render_treemap(df: pd.DataFrame, tf: str, limit: float, key: str,
     )
     # Mint-Rahmen fuer Kacheln mit RVOL >= 1.5 (Blattebene). Plotly haengt
     # Gruppen-Knoten hinter die Blaetter -> Arrays entsprechend auffuellen.
-    if signals is not None and df["RVOL"].notna().any():
+    if signals is not None and df["RVOL_hot"].notna().any():
         leaf = fig.data[0]
-        n_total = len(leaf.ids) if leaf.ids is not None else 0
         lookup = df.set_index(label_col)
         colors, widths = [], []
         for lab in (leaf.labels if leaf.labels is not None else []):
-            rv = lookup["RVOL"].get(lab, np.nan) \
+            rv = lookup["RVOL_hot"].get(lab, np.nan) \
                 if lab in lookup.index else np.nan
             hot = pd.notna(rv) and rv >= 1.5
             colors.append(MINT if hot else NAVY_BG)
@@ -558,13 +570,22 @@ with tab_map:
             limit = TIMEFRAMES[tf][1]
             picked = render_treemap(df, tf, limit, key="map_stocks",
                                     signals=sig)
-            hot = sig[sig["RVOL"] >= 1.5].sort_values("RVOL", ascending=False) \
-                if not sig.empty else pd.DataFrame()
-            if not hot.empty:
-                st.caption(
-                    "Mint-Rahmen = RVOL >= 1.5 (Run-Rate): "
-                    + " · ".join(f"{t} {r.RVOL:.1f}x"
-                                 for t, r in hot.head(8).iterrows()))
+            if not sig.empty:
+                sig_hot = sig.copy()
+                sig_hot["hot"] = sig_hot["RVOL_live"].fillna(
+                    sig_hot["RVOL_prev"])
+                live_mode = sig_hot["RVOL_live"].notna().any()
+                hot = sig_hot[sig_hot["hot"] >= 1.5].sort_values(
+                    "hot", ascending=False)
+                mode_txt = ("live, Run-Rate" if live_mode
+                            else "Abschluss Vortag – Boerse geschlossen")
+                if not hot.empty:
+                    st.caption(
+                        f"Mint-Rahmen = RVOL >= 1.5 ({mode_txt}): "
+                        + " · ".join(f"{t} {r.hot:.1f}x"
+                                     for t, r in hot.head(8).iterrows()))
+                else:
+                    st.caption(f"RVOL-Modus: {mode_txt} · kein Wert >= 1.5.")
             st.caption(
                 f"{tf} = letzter Kurs vs. Close vor {TIMEFRAMES[tf][0]} Handelstag(en) · "
                 f"Skala ±{limit:.0f} % · Stand: {closes.index[-1]:%Y-%m-%d} · "
@@ -581,7 +602,9 @@ with tab_map:
             tbl_all = tbl_all.rename(columns={"Last": "Kurs"})
             tbl_all = tbl_all.merge(sig, left_on="Ticker", right_index=True,
                                     how="left")
-            tbl_all = tbl_all.rename(columns={"ATRext": "ATR-Ext"})
+            tbl_all = tbl_all.rename(columns={
+                "ATRext": "ATR-Ext", "RVOL_live": "RVOL live",
+                "RVOL_prev": "RVOL VT"})
             tbl_all = (tbl_all.sort_values("1D", ascending=False)
                        .reset_index(drop=True))
             pct_c = ["1D", "1W", "2W", "4W"]
@@ -598,8 +621,9 @@ with tab_map:
             st.dataframe(
                 tbl_all.style
                 .map(col_pct, subset=pct_c)
-                .map(col_rvol, subset=["RVOL"])
-                .format({"Kurs": "{:,.2f}", "RVOL": "{:.2f}",
+                .map(col_rvol, subset=["RVOL live", "RVOL VT"])
+                .format({"Kurs": "{:,.2f}", "RVOL live": "{:.2f}",
+                         "RVOL VT": "{:.2f}",
                          "ATR-Ext": "{:+.1f}",
                          **{c: "{:+.2f} %" for c in pct_c}}),
                 use_container_width=True, hide_index=True,
