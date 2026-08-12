@@ -334,6 +334,52 @@ def render_detail_chart(ticker: str, label: str) -> None:
     )
 
 
+@st.cache_data(ttl=QUOTE_TTL, show_spinner=False)
+def fetch_signals(tickers: tuple) -> pd.DataFrame:
+    """RVOL (Run-Rate) und ATR%-Extension je Ticker.
+
+    RVOL: heutiges Volumen / 50-Tage-Schnitt. Laeuft die US-Session noch,
+    wird das Tagesvolumen auf die bereits verstrichene Handelszeit hoch-
+    gerechnet (Run-Rate-Logik) statt naiv gegen den Tagesschnitt zu stellen.
+    ATR-Ext: (Close - EMA21) / ATR14 – Werte um +-4 markieren Ueberdehnung.
+    """
+    raw = yf.download(list(tickers), period="4mo", auto_adjust=True,
+                      progress=False, group_by="column", threads=True)
+    C = raw["Close"]; H = raw["High"]; L = raw["Low"]; V = raw["Volume"]
+    if isinstance(C, pd.Series):
+        C = C.to_frame(tickers[0]); H = H.to_frame(tickers[0])
+        L = L.to_frame(tickers[0]); V = V.to_frame(tickers[0])
+
+    # Session-Fortschritt (US-Boerse 9:30-16:00 ET) fuer Run-Rate
+    now_et = pd.Timestamp.now(tz="America/New_York")
+    frac = 1.0
+    use_prev_vol = False        # Pre-Market: heutige Teilzeile ignorieren
+    if C.index[-1].date() == now_et.date():
+        mins = (now_et.hour * 60 + now_et.minute) - (9 * 60 + 30)
+        if mins <= 0:
+            use_prev_vol = True
+        else:
+            frac = min(max(mins / 390.0, 0.08), 1.0)
+
+    out = {}
+    for t in C.columns:
+        c = C[t].dropna()
+        if len(c) < 60:
+            continue
+        v = V[t].reindex(c.index)
+        v50 = v.iloc[-51:-1].mean()
+        v_now = v.iloc[-2] if use_prev_vol and len(v) > 1 else v.iloc[-1]
+        rvol = (v_now / frac) / v50 if v50 and v50 > 0 else np.nan
+        h, l = H[t].reindex(c.index), L[t].reindex(c.index)
+        tr = pd.concat([h - l, (h - c.shift()).abs(),
+                        (l - c.shift()).abs()], axis=1).max(axis=1)
+        atr14 = tr.ewm(alpha=1 / 14, adjust=False).mean().iloc[-1]
+        ema21 = c.ewm(span=21, adjust=False).mean().iloc[-1]
+        ext = (c.iloc[-1] - ema21) / atr14 if atr14 and atr14 > 0 else np.nan
+        out[t] = {"RVOL": rvol, "ATRext": ext}
+    return pd.DataFrame(out).T
+
+
 def col_pct(v):
     """Zell-Faerbung fuer %-Werte (Tabellen)."""
     if pd.isna(v):
@@ -347,9 +393,21 @@ def col_pct(v):
 
 # ---------------- Treemap-Renderer ----------------
 def render_treemap(df: pd.DataFrame, tf: str, limit: float, key: str,
-                   label_col: str = "Ticker") -> str | None:
-    """Zeichnet die Treemap und gibt den angeklickten Ticker zurueck (oder None)."""
+                   label_col: str = "Ticker",
+                   signals: pd.DataFrame | None = None) -> str | None:
+    """Zeichnet die Treemap und gibt den angeklickten Ticker zurueck (oder None).
+    signals: optionale RVOL/ATRext-Tabelle -> Tooltip-Zeilen + Mint-Rahmen
+    bei RVOL >= 1.5."""
     df = df.copy()
+    if signals is not None:
+        df = df.merge(signals, left_on="Ticker", right_index=True, how="left")
+    else:
+        df["RVOL"] = np.nan
+        df["ATRext"] = np.nan
+    df["RVOLtxt"] = df["RVOL"].apply(
+        lambda v: f"{v:.2f}" if pd.notna(v) else "–")
+    df["EXTtxt"] = df["ATRext"].apply(
+        lambda v: f"{v:+.1f}" if pd.notna(v) else "–")
     # Langname fuer Kachel-Zeile 3 (gekuerzt, damit kleine Kacheln lesbar bleiben)
     if "Name" in df.columns:
         df["ShortName"] = df["Name"].astype(str).apply(
@@ -364,7 +422,8 @@ def render_treemap(df: pd.DataFrame, tf: str, limit: float, key: str,
         color=tf,
         color_continuous_scale=COLOR_SCALE,
         range_color=(-limit, limit),
-        custom_data=["Last", "1D", "1W", "2W", "4W", "Ticker", "ShortName", "Name"],
+        custom_data=["Last", "1D", "1W", "2W", "4W", "Ticker", "ShortName",
+                     "Name", "RVOLtxt", "EXTtxt"],
     )
     idx = list(TIMEFRAMES.keys()).index(tf) + 1
     fig.update_traces(
@@ -377,10 +436,28 @@ def render_treemap(df: pd.DataFrame, tf: str, limit: float, key: str,
             "1D: %{customdata[1]:.2f} %<br>"
             "1W: %{customdata[2]:.2f} %<br>"
             "2W: %{customdata[3]:.2f} %<br>"
-            "4W: %{customdata[4]:.2f} %<extra></extra>"
+            "4W: %{customdata[4]:.2f} %<br>"
+            "RVOL: %{customdata[8]} · ATR-Ext: %{customdata[9]}"
+            "<extra></extra>"
         ),
         marker=dict(line=dict(width=1.5, color=NAVY_BG)),
     )
+    # Mint-Rahmen fuer Kacheln mit RVOL >= 1.5 (Blattebene). Plotly haengt
+    # Gruppen-Knoten hinter die Blaetter -> Arrays entsprechend auffuellen.
+    if signals is not None and df["RVOL"].notna().any():
+        leaf = fig.data[0]
+        n_total = len(leaf.ids) if leaf.ids is not None else 0
+        lookup = df.set_index(label_col)
+        colors, widths = [], []
+        for lab in (leaf.labels if leaf.labels is not None else []):
+            rv = lookup["RVOL"].get(lab, np.nan) \
+                if lab in lookup.index else np.nan
+            hot = pd.notna(rv) and rv >= 1.5
+            colors.append(MINT if hot else NAVY_BG)
+            widths.append(3.0 if hot else 1.5)
+        if colors:
+            fig.update_traces(marker=dict(
+                line=dict(width=widths, color=colors)))
     fig.update_layout(
         margin=dict(t=10, l=0, r=0, b=0),
         height=680,
@@ -472,12 +549,22 @@ with tab_map:
             if closes is None:
                 closes = fetch_closes(tickers)
             sizes = fetch_sizes(tickers)
+        with st.spinner("Berechne RVOL / ATR-Extension..."):
+            sig = fetch_signals(tickers)
         df = prepare(universe, closes, sizes, tf)
         if df.empty:
             st.error("Keine Kursdaten – Ticker pruefen.")
         else:
             limit = TIMEFRAMES[tf][1]
-            picked = render_treemap(df, tf, limit, key="map_stocks")
+            picked = render_treemap(df, tf, limit, key="map_stocks",
+                                    signals=sig)
+            hot = sig[sig["RVOL"] >= 1.5].sort_values("RVOL", ascending=False) \
+                if not sig.empty else pd.DataFrame()
+            if not hot.empty:
+                st.caption(
+                    "Mint-Rahmen = RVOL >= 1.5 (Run-Rate): "
+                    + " · ".join(f"{t} {r.RVOL:.1f}x"
+                                 for t, r in hot.head(8).iterrows()))
             st.caption(
                 f"{tf} = letzter Kurs vs. Close vor {TIMEFRAMES[tf][0]} Handelstag(en) · "
                 f"Skala ±{limit:.0f} % · Stand: {closes.index[-1]:%Y-%m-%d} · "
@@ -486,6 +573,40 @@ with tab_map:
             if picked:
                 nm = df[df["Ticker"] == picked]["Name"]
                 render_detail_chart(picked, nm.iloc[0] if len(nm) else picked)
+
+            # --- Tabelle: alle Werte unter der Map ---
+            st.markdown("#### Alle Werte")
+            tbl_all = df[["Ticker", "Name", "Theme", "Last",
+                          "1D", "1W", "2W", "4W"]].copy()
+            tbl_all = tbl_all.rename(columns={"Last": "Kurs"})
+            tbl_all = tbl_all.merge(sig, left_on="Ticker", right_index=True,
+                                    how="left")
+            tbl_all = tbl_all.rename(columns={"ATRext": "ATR-Ext"})
+            tbl_all = (tbl_all.sort_values("1D", ascending=False)
+                       .reset_index(drop=True))
+            pct_c = ["1D", "1W", "2W", "4W"]
+
+            def col_rvol(v):
+                if pd.isna(v):
+                    return ""
+                if v >= 1.5:
+                    return "background-color: rgba(63,224,160,0.75); color: #fff"
+                if v >= 1.0:
+                    return f"background-color: {NAVY_CARD}; color: #fff"
+                return "color: #9fb0e8"
+
+            st.dataframe(
+                tbl_all.style
+                .map(col_pct, subset=pct_c)
+                .map(col_rvol, subset=["RVOL"])
+                .format({"Kurs": "{:,.2f}", "RVOL": "{:.2f}",
+                         "ATR-Ext": "{:+.1f}",
+                         **{c: "{:+.2f} %" for c in pct_c}}),
+                use_container_width=True, hide_index=True,
+                height=42 + 35 * len(tbl_all),
+            )
+            st.caption("Sortiert nach 1D · Spaltenkopf anklicken zum "
+                       "Umsortieren · RVOL >= 1.5 hervorgehoben.")
 
 # ----- Tab 2: Futures/Makro -----
 with tab_fut:
