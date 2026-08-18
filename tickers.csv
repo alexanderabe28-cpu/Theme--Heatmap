@@ -24,11 +24,10 @@ PSP,Financials,Invesco Global Listed Private Equity ETF
 XLE,Energie,Energy Select Sector SPDR ETF
 XOP,Energie,SPDR S&P Oil & Gas Exploration & Production ETF
 PXJ,Energie,Invesco Oil & Gas Services ETF
-XLB,Materials/Mining,Materials Select Sector SPDR ETF
-XME,Materials/Mining,SPDR S&P Metals & Mining ETF
-COPX,Materials/Mining,Global X Copper Miners ETF
-GDX,Materials/Mining,VanEck Gold Miners ETF
-SIL,Materials/Mining,Global X Silver Miners ETF
+VAW,Chemie/Materials,Vanguard Materials ETF
+COPX,Miners,Global X Copper Miners ETF
+GDX,Miners,VanEck Gold Miners ETF
+SIL,Miners,Global X Silver Miners ETF
 GLD,Metalle,SPDR Gold Shares
 SLV,Metalle,iShares Silver Trust
 SCOP,Metalle,Sprott Physical Copper Trust
