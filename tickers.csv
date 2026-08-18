@@ -3,12 +3,12 @@ SPY,Broad Market,SPDR S&P 500 ETF Trust
 QQQ,Broad Market,Invesco QQQ Trust
 IWM,Broad Market,iShares Russell 2000 ETF
 DIA,Broad Market,SPDR Dow Jones Industrial Average ETF
-SMH,Halbleiter,VanEck Semiconductor ETF
-SOXX,Halbleiter,iShares Semiconductor ETF
-XSD,Halbleiter,SPDR S&P Semiconductor ETF
 RSP,Marktbreite (EW),Invesco S&P 500 Equal Weight ETF
 QQQE,Marktbreite (EW),Direxion NASDAQ-100 Equal Weight ETF
 EDOW,Marktbreite (EW),First Trust Dow 30 Equal Weight ETF
+SMH,Halbleiter,VanEck Semiconductor ETF
+SOXX,Halbleiter,iShares Semiconductor ETF
+XSD,Halbleiter,SPDR S&P Semiconductor ETF
 IGV,Software Infra & Application,iShares Expanded Tech-Software ETF
 SKYY,Software Infra & Application,First Trust Cloud Computing ETF
 CIBR,Software Infra & Application,First Trust NASDAQ Cybersecurity ETF
