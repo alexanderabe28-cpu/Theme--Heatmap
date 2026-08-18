@@ -533,9 +533,9 @@ if ms:
     st_autorefresh(interval=ms, key="auto_refresh")
 
 (tab_map, tab_idx, tab_fut, tab_watch, tab_ovsd, tab_gen, tab_breadth,
- tab_themes, tab_universe) = st.tabs(
+ tab_themes, tab_cal, tab_universe) = st.tabs(
     ["Aktien / ETF", "Index-Maps", "Futures / Makro", "Watchlist", "OvsD",
-     "Generaele", "Breadth", "Theme Tracker", "Universum"])
+     "Generaele", "Breadth", "Theme Tracker", "Kalender", "Universum"])
 
 # ----- Tab 1: Aktien/ETF -----
 with tab_map:
@@ -764,11 +764,58 @@ with tab_ovsd:
         st.error("Keine Sektordaten.")
     else:
         limit_o = TIMEFRAMES_FUT[tfo][1]      # Sektoren: engere Makro-Skala
+        with st.spinner("Berechne RVOL / ATR-Extension..."):
+            sig_o = fetch_signals(tuple(OVSD_UNIVERSE["Ticker"]))
         picked_o = render_treemap(dfo, tfo, limit_o, key="map_ovsd",
-                                  label_col="Name")
+                                  label_col="Name", signals=sig_o)
+        if not sig_o.empty:
+            so = sig_o.copy()
+            so["hot"] = so["RVOL_live"].fillna(so["RVOL_prev"])
+            live_mode_o = so["RVOL_live"].notna().any()
+            hot_o = so[so["hot"] >= 1.5].sort_values("hot", ascending=False)
+            mode_o = ("live, Run-Rate" if live_mode_o
+                      else "Abschluss Vortag – Boerse geschlossen")
+            if not hot_o.empty:
+                st.caption(f"Mint-Rahmen = RVOL >= 1.5 ({mode_o}): "
+                           + " · ".join(f"{t} {r.hot:.1f}x"
+                                        for t, r in hot_o.iterrows()))
+            else:
+                st.caption(f"RVOL-Modus: {mode_o} · kein Wert >= 1.5.")
         if picked_o:
             nm = dfo[dfo["Ticker"] == picked_o]["Name"]
             render_detail_chart(picked_o, nm.iloc[0] if len(nm) else picked_o)
+
+        # --- Tabelle: alle Werte ---
+        tbl_o = dfo[["Ticker", "Name", "Theme", "Last",
+                     "1D", "1W", "2W", "4W"]].copy()
+        tbl_o = tbl_o.rename(columns={"Last": "Kurs"})
+        tbl_o = tbl_o.merge(sig_o, left_on="Ticker", right_index=True,
+                            how="left")
+        tbl_o = tbl_o.rename(columns={"ATRext": "ATR-Ext",
+                                      "RVOL_live": "RVOL live",
+                                      "RVOL_prev": "RVOL VT"})
+        tbl_o = tbl_o.sort_values("1D", ascending=False).reset_index(drop=True)
+        pct_o = ["1D", "1W", "2W", "4W"]
+
+        def col_rvol_o(v):
+            if pd.isna(v):
+                return ""
+            if v >= 1.5:
+                return "background-color: rgba(63,224,160,0.75); color: #fff"
+            if v >= 1.0:
+                return f"background-color: {NAVY_CARD}; color: #fff"
+            return "color: #9fb0e8"
+
+        st.dataframe(
+            tbl_o.style
+            .map(col_pct, subset=pct_o)
+            .map(col_rvol_o, subset=["RVOL live", "RVOL VT"])
+            .format({"Kurs": "{:,.2f}", "RVOL live": "{:.2f}",
+                     "RVOL VT": "{:.2f}", "ATR-Ext": "{:+.1f}",
+                     **{c: "{:+.2f} %" for c in pct_o}}),
+            use_container_width=True, hide_index=True,
+            height=42 + 35 * len(tbl_o),
+        )
 
         # --- OvsD-Indikator: Offense-Komposit / Defense-Komposit ---
         import plotly.graph_objects as go
@@ -1240,6 +1287,100 @@ with tab_themes:
             "Sortiert nach Performance. YTD = seit letztem Handelstag des "
             "Vorjahres."
         )
+
+# ----- Tab: Kalender (US-Makro, Quelle: Concretum) -----
+CAL_BASE = "https://calendar.concretumgroup.com/api"
+
+
+@st.cache_data(ttl=6 * 3600, show_spinner=False)
+def fetch_cal_catalog() -> list:
+    import urllib.request, json as _json
+    req = urllib.request.Request(CAL_BASE + "/events/catalog/",
+                                 headers={"User-Agent": "Mozilla/5.0"})
+    return _json.loads(urllib.request.urlopen(req, timeout=15).read())["events"]
+
+
+@st.cache_data(ttl=6 * 3600, show_spinner=False)
+def fetch_cal_events(codes: tuple, days: int) -> pd.DataFrame:
+    import urllib.request, json as _json, datetime as _dt
+    start = _dt.date.today()
+    end = start + _dt.timedelta(days=days)
+    url = (f"{CAL_BASE}/events/preview/?events={','.join(codes)}"
+           f"&start={start}&end={end}&layout=long"
+           f"&include_assumed_time=true&ordering=event_date&page_size=200")
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    rows = _json.loads(urllib.request.urlopen(req, timeout=15).read())["rows"]
+    return pd.DataFrame(rows)
+
+
+with tab_cal:
+    try:
+        catalog = fetch_cal_catalog()
+    except Exception as e:
+        catalog = []
+        st.error(f"Kalender-Quelle nicht erreichbar ({e}).")
+    if catalog:
+        code2name = {e["event_code"]: e["event_name"] for e in catalog}
+        default_codes = [c for c in ["fomc", "cpi", "nfp", "pce", "gdp",
+                                     "ppi", "retail", "claims"]
+                         if c in code2name]
+        ccol1, ccol2 = st.columns([3, 1])
+        with ccol1:
+            sel = st.multiselect("Events", list(code2name.keys()),
+                                 default=default_codes,
+                                 format_func=lambda c: code2name[c],
+                                 label_visibility="collapsed")
+        with ccol2:
+            horizon = st.selectbox("Zeitraum", [14, 30, 60, 90], index=2,
+                                   format_func=lambda d: f"{d} Tage",
+                                   label_visibility="collapsed")
+        if sel:
+            with st.spinner("Lade Kalender..."):
+                ev = fetch_cal_events(tuple(sorted(sel)), int(horizon))
+            if ev.empty:
+                st.info("Keine Events im Zeitraum.")
+            else:
+                from zoneinfo import ZoneInfo
+                ev["event_date"] = pd.to_datetime(ev["event_date"])
+                today = pd.Timestamp.today().normalize()
+                ev["In Tagen"] = (ev["event_date"] - today).dt.days
+
+                def de_time(row):
+                    t = row["assumed_time_et"]
+                    if not t:
+                        return "–"
+                    et = pd.Timestamp(f"{row['event_date'].date()} {t}",
+                                      tz="America/New_York")
+                    return et.tz_convert("Europe/Berlin").strftime("%H:%M")
+
+                ev["Zeit ET"] = ev["assumed_time_et"].replace("", "–")
+                ev["Zeit DE"] = ev.apply(de_time, axis=1)
+                ev["Datum"] = ev["event_date"].dt.strftime("%a %d.%m.%Y")
+                ev["Zeit best."] = ev["time_verified"].map(
+                    {True: "ja", False: "angenommen"})
+                out = ev[["Datum", "In Tagen", "event_name", "Zeit ET",
+                          "Zeit DE", "Zeit best."]].rename(
+                    columns={"event_name": "Event"})
+
+                def row_hl(row):
+                    if row["In Tagen"] <= 1:
+                        return ["background-color: rgba(63,224,160,0.25)"] \
+                            * len(row)
+                    if row["In Tagen"] <= 7:
+                        return [f"background-color: {NAVY_CARD}"] * len(row)
+                    return [""] * len(row)
+
+                st.dataframe(out.style.apply(row_hl, axis=1),
+                             use_container_width=True, hide_index=True,
+                             height=42 + 35 * len(out))
+                nxt = out.iloc[0]
+                st.caption(
+                    f"Naechstes Event: {nxt['Event']} am {nxt['Datum']} "
+                    f"({nxt['Zeit DE']} Uhr DE) · Gruen = heute/morgen, "
+                    f"dunkel = diese Woche · 'angenommen' = Uhrzeit noch "
+                    f"nicht offiziell bestaetigt · Quelle: "
+                    f"calendar.concretumgroup.com (Concretum Group)."
+                )
 
 # ----- Tab 7: Universum -----
 with tab_universe:
