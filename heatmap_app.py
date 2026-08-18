@@ -56,6 +56,12 @@ st.set_page_config(page_title="Theme-Heatmap", layout="wide")
 
 # ---------------- Universen laden / speichern ----------------
 def load_csv(path: str) -> pd.DataFrame:
+    # Fehlende Datei darf die App nicht crashen (z.B. waehrend eines
+    # Repo-Umbaus) -> leeres Universum zurueckgeben, Tabs zeigen Warnung.
+    if not os.path.exists(path):
+        st.warning(f"{os.path.basename(path)} fehlt im App-Ordner – "
+                   "bitte ins Repo hochladen.")
+        return pd.DataFrame(columns=["Ticker", "Theme", "Name"])
     df = pd.read_csv(path)
     df["Ticker"] = df["Ticker"].astype(str).str.upper().str.strip()
     if "Theme" not in df.columns:
@@ -401,10 +407,13 @@ def col_pct(v):
 # ---------------- Treemap-Renderer ----------------
 def render_treemap(df: pd.DataFrame, tf: str, limit: float, key: str,
                    label_col: str = "Ticker",
-                   signals: pd.DataFrame | None = None) -> str | None:
+                   signals: pd.DataFrame | None = None,
+                   keep_order: bool = False) -> str | None:
     """Zeichnet die Treemap und gibt den angeklickten Ticker zurueck (oder None).
     signals: optionale RVOL/ATRext-Tabelle -> Tooltip-Zeilen + Mint-Rahmen
-    bei RVOL >= 1.5."""
+    bei RVOL >= 1.5.
+    keep_order: True = Gruppen in Datenreihenfolge platzieren (oben links
+    zuerst) statt nach Flaechengroesse zu sortieren."""
     df = df.copy()
     if signals is not None:
         df = df.merge(signals, left_on="Ticker", right_index=True, how="left")
@@ -455,6 +464,8 @@ def render_treemap(df: pd.DataFrame, tf: str, limit: float, key: str,
         ),
         marker=dict(line=dict(width=1.5, color=NAVY_BG)),
     )
+    if keep_order:
+        fig.update_traces(sort=False)
     # Mint-Rahmen fuer Kacheln mit RVOL >= 1.5 (Blattebene). Plotly haengt
     # Gruppen-Knoten hinter die Blaetter -> Arrays entsprechend auffuellen.
     if signals is not None and df["RVOL_hot"].notna().any():
@@ -501,6 +512,9 @@ def prepare(universe: pd.DataFrame, closes: pd.DataFrame,
         df = df.merge(sizes, left_on="Ticker", right_index=True, how="left")
         df["Size"] = df["Size"].fillna(df["Size"].median()).clip(lower=1)
         df["Size"] = np.sqrt(df["Size"])       # Rangfolge bleibt, Kleine lesbar
+        # Deckel bei 2.5x Median: Mega-AUM (SPY/QQQ/GLD) erdrueckt sonst
+        # die Theme-Gruppen -> Broad Market bleibt auf Gruppen-Niveau
+        df["Size"] = df["Size"].clip(upper=df["Size"].median() * 2.5)
     else:
         df["Size"] = 1.0                        # Futures: gleich grosse Kacheln
     missing = df[df[tf].isna()]["Ticker"].tolist()
@@ -569,7 +583,7 @@ with tab_map:
         else:
             limit = TIMEFRAMES[tf][1]
             picked = render_treemap(df, tf, limit, key="map_stocks",
-                                    signals=sig)
+                                    signals=sig, keep_order=True)
             if not sig.empty:
                 sig_hot = sig.copy()
                 sig_hot["hot"] = sig_hot["RVOL_live"].fillna(

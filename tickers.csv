@@ -1,15 +1,18 @@
 Ticker,Theme,Name
+SMH,Halbleiter,VanEck Semiconductor ETF
+SOXX,Halbleiter,iShares Semiconductor ETF
+XSD,Halbleiter,SPDR S&P Semiconductor ETF
+IGV,Software Infra & Application,iShares Expanded Tech-Software ETF
+SKYY,Software Infra & Application,First Trust Cloud Computing ETF
+CIBR,Software Infra & Application,First Trust NASDAQ Cybersecurity ETF
+AIQ,Software Infra & Application,Global X Artificial Intelligence & Technology ETF
 SPY,Broad Market,SPDR S&P 500 ETF Trust
 QQQ,Broad Market,Invesco QQQ Trust
 IWM,Broad Market,iShares Russell 2000 ETF
 DIA,Broad Market,SPDR Dow Jones Industrial Average ETF
-SMH,Halbleiter,VanEck Semiconductor ETF
-SOXX,Halbleiter,iShares Semiconductor ETF
-XSD,Halbleiter,SPDR S&P Semiconductor ETF
-IGV,Software/Cloud,iShares Expanded Tech-Software ETF
-SKYY,Software/Cloud,First Trust Cloud Computing ETF
-CIBR,CyberSec/AI,First Trust NASDAQ Cybersecurity ETF
-AIQ,CyberSec/AI,Global X Artificial Intelligence & Technology ETF
+RSP,Marktbreite (EW),Invesco S&P 500 Equal Weight ETF
+QQQE,Marktbreite (EW),Direxion NASDAQ-100 Equal Weight ETF
+EDOW,Marktbreite (EW),First Trust Dow 30 Equal Weight ETF
 PNQI,Internet/Social,Invesco NASDAQ Internet ETF
 SOCL,Internet/Social,Global X Social Media ETF
 IBOT,Robotik/Connect,VanEck Robotics ETF
@@ -42,9 +45,6 @@ PEJ,Consumer,Invesco Leisure and Entertainment ETF
 RWX,Real Estate,SPDR Dow Jones International Real Estate ETF
 GLD,Metalle,SPDR Gold Shares
 SLV,Metalle,iShares Silver Trust
-TLT,Bonds/Rates,iShares 20+ Year Treasury Bond ETF
-TBT,Bonds/Rates,ProShares UltraShort 20+ Year Treasury
-SHM,Bonds/Rates,SPDR Nuveen Bloomberg Short Term Municipal Bond ETF
 DX-Y.NYB,USD-Index,US Dollar Index
 SCOP,Metalle,Sprott Physical Copper Trust
 COPX,Metalle,Global X Copper Miners ETF
