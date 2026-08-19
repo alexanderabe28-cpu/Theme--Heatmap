@@ -118,6 +118,7 @@ def fetch_closes(tickers: tuple, period: str = HISTORY_PERIOD) -> pd.DataFrame:
     data = yf.download(
         list(tickers), period=period,
         auto_adjust=True, progress=False, group_by="column",
+        threads=False,          # Cloud: Thread-je-Ticker sprengt das Limit
     )
     closes = data["Close"]
     if isinstance(closes, pd.Series):
@@ -145,6 +146,33 @@ RS_UNIVERSE_FILE = os.path.join(BASE, "rs_universe.csv")
 RS_TTL = 12 * 3600      # RS/Breadth 12 h zwischenspeichern
 
 
+def bulk_download(tickers: list, period: str, chunk: int = 60) -> dict:
+    """Grosse Universen in Bloecken laden, ohne yfinance-Threading.
+
+    yfinance startet mit threads=True einen Thread je Ticker – bei 500+
+    Titeln laeuft die Streamlit-Cloud-Instanz ins Thread-Limit
+    (RuntimeError: can't start new thread). Sequenzielle Bloecke von 60
+    Tickern sind etwas langsamer, aber stabil.
+    """
+    parts = {}
+    for i in range(0, len(tickers), chunk):
+        sub = tickers[i:i + chunk]
+        try:
+            raw = yf.download(sub, period=period, auto_adjust=True,
+                              progress=False, group_by="column",
+                              threads=False)
+        except Exception:
+            continue
+        for field in ["Open", "High", "Low", "Close", "Volume"]:
+            if field not in raw:
+                continue
+            df = raw[field]
+            if isinstance(df, pd.Series):
+                df = df.to_frame(name=sub[0])
+            parts.setdefault(field, []).append(df)
+    return {f: pd.concat(v, axis=1) for f, v in parts.items()}
+
+
 @st.cache_data(ttl=RS_TTL, show_spinner=False)
 def fetch_universe_ohlcv(extra_symbols: tuple) -> dict:
     """OHLCV fuer das S&P-500-Universum (+ Watchlist). Ein Download fuer
@@ -154,16 +182,7 @@ def fetch_universe_ohlcv(extra_symbols: tuple) -> dict:
     except Exception:
         uni = []
     symbols = sorted(set(uni) | {s.upper() for s in extra_symbols})
-    raw = yf.download(symbols, period="18mo", auto_adjust=True,
-                      progress=False, group_by="column", threads=True)
-    out = {}
-    for field in ["Open", "High", "Low", "Close", "Volume"]:
-        if field in raw:
-            df = raw[field]
-            if isinstance(df, pd.Series):
-                df = df.to_frame(name=symbols[0])
-            out[field] = df
-    return out
+    return bulk_download(symbols, "18mo")
 
 
 @st.cache_data(ttl=RS_TTL, show_spinner=False)
@@ -287,7 +306,7 @@ def compute_changes(closes: pd.DataFrame) -> pd.DataFrame:
 def fetch_ohlc(ticker: str, period: str = "1y") -> pd.DataFrame:
     """OHLCV fuer den Detail-Chart eines einzelnen Symbols."""
     df = yf.download(ticker, period=period, auto_adjust=True,
-                     progress=False, group_by="column")
+                     progress=False, group_by="column", threads=False)
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
     return df.dropna(how="all")
@@ -356,9 +375,10 @@ def fetch_signals(tickers: tuple) -> pd.DataFrame:
     gerechnet (Run-Rate-Logik) statt naiv gegen den Tagesschnitt zu stellen.
     ATR-Ext: (Close - EMA21) / ATR14 – Werte um +-4 markieren Ueberdehnung.
     """
-    raw = yf.download(list(tickers), period="4mo", auto_adjust=True,
-                      progress=False, group_by="column", threads=True)
-    C = raw["Close"]; H = raw["High"]; L = raw["Low"]; V = raw["Volume"]
+    d = bulk_download(list(tickers), "4mo")
+    if not d:
+        return pd.DataFrame()
+    C, H, L, V = d["Close"], d["High"], d["Low"], d["Volume"]
     if isinstance(C, pd.Series):
         C = C.to_frame(tickers[0]); H = H.to_frame(tickers[0])
         L = L.to_frame(tickers[0]); V = V.to_frame(tickers[0])
@@ -1127,11 +1147,9 @@ def fetch_index_ohlcv(tickers: tuple) -> tuple:
     """Closes + Volumen fuer eine Index-Konstituentenliste (10 min Cache).
     Wichtig: ohne Cache wuerde Streamlit diesen Download bei JEDEM Rerun
     ausfuehren (alle Tab-Bloecke laufen pro Interaktion)."""
-    raw = yf.download(list(tickers), period="6mo", auto_adjust=True,
-                      progress=False, group_by="column", threads=True)
-    closes = raw["Close"].dropna(how="all")
-    vol = raw["Volume"] if "Volume" in raw else None
-    return closes, vol
+    d = bulk_download(list(tickers), "6mo")
+    closes = d.get("Close", pd.DataFrame()).dropna(how="all")
+    return closes, d.get("Volume")
 
 
 with tab_idx:
