@@ -53,6 +53,13 @@ COLOR_SCALE = [
 
 st.set_page_config(page_title="Theme-Heatmap", layout="wide")
 
+# Aktien/ETF-Map: feste Breite erzwingen (Layout sonst abhaengig von der
+# Fensterbreite); bei schmalen Fenstern horizontal scrollen statt stauchen
+st.markdown("""<style>
+.st-key-map_stocks {overflow-x: auto;}
+.st-key-map_stocks div.js-plotly-plot {min-width: 1250px; width: 1250px;}
+</style>""", unsafe_allow_html=True)
+
 
 # ---------------- Universen laden / speichern ----------------
 def load_csv(path: str) -> pd.DataFrame:
@@ -483,13 +490,15 @@ def render_treemap(df: pd.DataFrame, tf: str, limit: float, key: str,
                 line=dict(width=widths, color=colors)))
     fig.update_layout(
         margin=dict(t=10, l=0, r=0, b=0),
-        height=680,
+        height=760, width=1250,        # feste Masse: Layout auf jedem
+        autosize=False,                # Bildschirm identisch (Packing haengt
+                                       # sonst von der Fensterbreite ab)
         paper_bgcolor=NAVY_BG,
         font=dict(family="Arial Black, Arial, sans-serif", color="#ffffff"),
         coloraxis_colorbar=dict(title="%", tickfont=dict(color="#ffffff")),
     )
     st.caption("Tipp: Kachel anklicken -> Detail-Chart erscheint darunter.")
-    event = st.plotly_chart(fig, use_container_width=True, key=key,
+    event = st.plotly_chart(fig, width="content", key=key, theme=None,
                             on_select="rerun", selection_mode="points")
 
     # Angeklickte Kachel -> Ticker aufloesen (nur Blattebene, keine Gruppen)
