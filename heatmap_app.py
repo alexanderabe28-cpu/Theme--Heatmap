@@ -576,9 +576,10 @@ if ms:
     st_autorefresh(interval=ms, key="auto_refresh")
 
 (tab_map, tab_idx, tab_fut, tab_watch, tab_ovsd, tab_gen, tab_breadth,
- tab_themes, tab_cal, tab_universe) = st.tabs(
+ tab_themes, tab_cal, tab_gate, tab_universe) = st.tabs(
     ["Aktien / ETF", "Index-Maps", "Futures / Makro", "Watchlist", "OvsD",
-     "Generaele", "Breadth", "Theme Tracker", "Kalender", "Universum"])
+     "Generaele", "Breadth", "Theme Tracker", "Kalender", "Gate-Check",
+     "Universum"])
 
 # ----- Tab 1: Aktien/ETF -----
 with tab_map:
@@ -1422,6 +1423,169 @@ with tab_cal:
                     f"nicht offiziell bestaetigt · Quelle: "
                     f"calendar.concretumgroup.com (Concretum Group)."
                 )
+
+# ----- Tab: Gate-Check (Pre-Trade Go/No-Go, Master Playbook Teil 3) -----
+GATE_SECTIONS = [
+    ("A", "Markt-Gates", "hart", [
+        ("A1", "Leitindex (QQQ/SPY) <= 4x ATR-Extension vom 50-MA",
+         "Jeffs SPY-Regel · Verbotszone 4"),
+        ("A2", "Regime-Leiter-Tier erlaubt neues Risiko (Exposure-Budget frei)",
+         "Regime-Leiter v2 + Puffer-Gate"),
+        ("A3", "Kein aktives S1-Schutzregime gegen die Trade-Richtung",
+         "Regel S1-S3"),
+    ]),
+    ("B", "Aktien-Gates", "hart", [
+        ("B1", "Ticker-Zustand erlaubt Entry (SCHARF/TRIGGERED bzw. RO-Trigger "
+               "- nicht Digestion, nicht Fruehwarnung)",
+         "Zustandsmaschine · Verbotszone 6/12"),
+        ("B2", "Kein SPHR-Typ: <= 4 Closes unter 10-MA in 20 Tagen (P2: <= 2)",
+         "Regel Q1/Q2 · Verbotszone 7"),
+        ("B3", "ATR valide - kein Buyout-Pin/ATR-Kollaps (ATR% > 0,5 % des Kurses)",
+         "ATR-Floor G6"),
+    ]),
+    ("C", "Setup-Gates", "hart", [
+        ("C1", "ATR-Ext <= 4x (SmallCap < 500M: <= 5x) - oder Kontext-Schalter "
+               "qualifiziert & dokumentiert (RO-Play)",
+         "Regel E1 · G4 · Verbotszone 1"),
+        ("C2", "ZVR / at-Time-RVOL > 100 % - Volumen bestaetigt JETZT",
+         "Concretum Fig. 4 · Verbotszone 2"),
+        ("C3", "Pivot/Struktur klar definiert (Kompression davor, Level benennbar)",
+         "Regel E3 · KC Schritt 3"),
+    ]),
+    ("D", "Intraday-Gates", "hart", [
+        ("D1", "LoD dist. < 50-60 % 'at time' - bei Buy-Stop: "
+               "(Entry-Stop) / ATR < 50 %", "Regel E2 · Verbotszone 3"),
+        ("D2", "Innerhalb des Execution-Fensters (erste 90 Min)",
+         "Zeitverfall Paper 2/3 · Verbotszone 8"),
+    ]),
+    ("E", "Risiko-Gates", "hart", [
+        ("E1", "Stop <= 1 ATR vom Entry", "Regel E1/K"),
+        ("E2", "Risiko <= 0,25 % (0,33 % nur wenn M3 gruen: Regime oben + "
+               "PF > 3 + unter Kelly-Deckel)", "K3 · M3 · M5 · Journal-Blatt"),
+        ("E3", "Groesse aus Spreadsheet; Kapitalbindung im Budget; "
+               "Position <= 1 % Ø-$-Tagesvolumen",
+         "K1/K2 · Liquidity-Cap · Verbotszone 10"),
+    ]),
+    ("F", "Selbst-Gates", "weich", [
+        ("F1", "Verlustserie < 20 (Aufmerksamkeitszone) - sonst Risiko 0,15 %, "
+               "Frequenz drosseln", "M1 · Monte-Carlo-Baender"),
+        ("F2", "Kein Revenge/FOMO - Trade stand vor heute auf der Liste bzw. "
+               "kommt aus Screen B ∩ SCHARF",
+         "'Earn your next trade' · Verbotszone 12"),
+        ("F3", "Setup-Tag vergeben & T+3-Datum notiert, Management-Alerts "
+               "vorbereitet", "Journal-Tagging · T+3-Protokoll"),
+    ]),
+]
+SETUPS = ["P1 - Kompressions-Breakout", "P2 - Trendfolge-Pullback",
+          "KC - Charakterwechsel", "RO - Repeat-Offender-Slingshot",
+          "S - Schutz/Short-Modul"]
+HARD_TOTAL = sum(len(g) for _, _, t, g in GATE_SECTIONS if t == "hart")
+SOFT_TOTAL = sum(len(g) for _, _, t, g in GATE_SECTIONS if t == "weich")
+
+
+@st.cache_data(ttl=QUOTE_TTL, show_spinner=False)
+def atr_ext_50ma(ticker: str) -> float:
+    """ATR-Extension vom 50-MA: (Close - SMA50) / ATR14."""
+    d = fetch_ohlc(ticker, period="6mo")
+    if d.empty or len(d) < 60:
+        return float("nan")
+    c, h, l = d["Close"], d["High"], d["Low"]
+    tr = pd.concat([h - l, (h - c.shift()).abs(),
+                    (l - c.shift()).abs()], axis=1).max(axis=1)
+    atr = tr.ewm(alpha=1 / 14, adjust=False).mean().iloc[-1]
+    sma50 = c.rolling(50).mean().iloc[-1]
+    return float((c.iloc[-1] - sma50) / atr) if atr else float("nan")
+
+
+with tab_gate:
+    st.caption("Vor jeder Order. Hartes Gate offen = NO-GO, weiche offen = "
+               "Vorsicht. Keine Speicherung - jeder Trade wird frisch geprueft.")
+    g1, g2, g3 = st.columns([1, 2, 1])
+    with g1:
+        gt_ticker = st.text_input("Ticker", key="gate_ticker",
+                                  placeholder="z.B. PANW").upper().strip()
+    with g2:
+        gt_setup = st.selectbox("Setup-Tag", ["—"] + SETUPS, key="gate_setup")
+    with g3:
+        gt_dir = st.selectbox("Richtung", ["Long", "Short"], key="gate_dir")
+
+    # --- Live-Vorpruefung aus vorhandenen Daten ---
+    hints = {}
+    try:
+        spy_ext = atr_ext_50ma("SPY")
+        qqq_ext = atr_ext_50ma("QQQ")
+        worst = max(abs(spy_ext), abs(qqq_ext))
+        hints["A1"] = (worst <= 4,
+                       f"SPY {spy_ext:+.1f}x · QQQ {qqq_ext:+.1f}x vom 50-MA")
+    except Exception:
+        pass
+    if gt_ticker:
+        try:
+            sg = fetch_signals((gt_ticker,))
+            if not sg.empty:
+                rv = sg.iloc[0]["RVOL_live"]
+                rv = sg.iloc[0]["RVOL_prev"] if pd.isna(rv) else rv
+                ext = atr_ext_50ma(gt_ticker)
+                hints["C2"] = (rv > 1.0, f"{gt_ticker} RVOL {rv:.2f}")
+                hints["C1"] = (abs(ext) <= 4,
+                               f"{gt_ticker} ATR-Ext {ext:+.1f}x vom 50-MA")
+        except Exception:
+            pass
+    if hints:
+        st.caption("Live-Vorpruefung (ersetzt nicht den Haken - die Zahl ist "
+                   "~15 min verzoegert): "
+                   + " · ".join(f"{'✓' if ok else '✗'} {k}: {txt}"
+                                for k, (ok, txt) in sorted(hints.items())))
+
+    # --- Gate-Liste ---
+    checked = {}
+    cols = st.columns(2)
+    for i, (sid, title, typ, gates) in enumerate(GATE_SECTIONS):
+        with cols[i % 2]:
+            st.markdown(f"**{sid} · {title}** "
+                        f"<span style='color:#9fb0e8;font-size:11px'>({typ})</span>",
+                        unsafe_allow_html=True)
+            for gid, text, ref in gates:
+                hint = hints.get(gid)
+                mark = "" if hint is None else ("  ✓" if hint[0] else "  ✗")
+                checked[gid] = st.checkbox(f"**{gid}** {text}{mark}",
+                                           key=f"gate_{gid}")
+                st.caption(ref)
+            st.write("")
+
+    hard_ok = sum(1 for sid, _, t, g in GATE_SECTIONS if t == "hart"
+                  for gid, _, _ in g if checked.get(gid))
+    soft_ok = sum(1 for sid, _, t, g in GATE_SECTIONS if t == "weich"
+                  for gid, _, _ in g if checked.get(gid))
+    open_gates = [gid for _, _, _, g in GATE_SECTIONS
+                  for gid, _, _ in g if not checked.get(gid)]
+
+    if hard_ok < HARD_TOTAL:
+        verdict, vcol = "NO-GO", "#e05a5a"
+        detail = f"{HARD_TOTAL - hard_ok} hartes Gate offen – kein Trade."
+    elif soft_ok < SOFT_TOTAL:
+        verdict, vcol = "VORSICHT", "#ffd166"
+        detail = (f"Alle harten Gates gruen, {SOFT_TOTAL - soft_ok} weiches "
+                  "offen – Size reduzieren oder Begruendung ins Journal.")
+    else:
+        verdict, vcol = "GO", MINT
+        detail = "Alle Gates gruen. Ausfuehren – Groesse kommt aus dem Spreadsheet."
+
+    st.markdown(
+        f"<div style='background:#10182f;border:2px solid {vcol};"
+        f"border-radius:10px;padding:14px 18px;margin-top:6px'>"
+        f"<span style='color:{vcol};font-weight:900;font-size:22px'>{verdict}</span>"
+        f"<span style='color:#cfd6f0;margin-left:14px'>hart {hard_ok}/{HARD_TOTAL}"
+        f" · weich {soft_ok}/{SOFT_TOTAL}</span>"
+        f"<div style='color:#9fb0e8;font-size:13px;margin-top:6px'>{detail}</div>"
+        f"</div>", unsafe_allow_html=True)
+
+    now_de = pd.Timestamp.now(tz="Europe/Berlin")
+    line = (f"{now_de:%d.%m.%Y %H:%M} | {gt_ticker or '—'} | "
+            f"{gt_setup} | {gt_dir} | Gate-Check: {verdict} "
+            f"(hart {hard_ok}/{HARD_TOTAL}, weich {soft_ok}/{SOFT_TOTAL})"
+            + (f" | offen: {','.join(open_gates)}" if open_gates else ""))
+    st.text_input("Journal-Zeile (kopierbar)", value=line, key="gate_line")
 
 # ----- Tab 7: Universum -----
 with tab_universe:
