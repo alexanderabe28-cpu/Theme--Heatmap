@@ -576,10 +576,10 @@ if ms:
     st_autorefresh(interval=ms, key="auto_refresh")
 
 (tab_map, tab_idx, tab_fut, tab_watch, tab_ovsd, tab_gen, tab_breadth,
- tab_themes, tab_cal, tab_gate, tab_universe) = st.tabs(
+ tab_scan, tab_themes, tab_cal, tab_gate, tab_universe) = st.tabs(
     ["Aktien / ETF", "Index-Maps", "Futures / Makro", "Watchlist", "OvsD",
-     "Generaele", "Breadth", "Theme Tracker", "Kalender", "Gate-Check",
-     "Universum"])
+     "Generaele", "Breadth", "Scanner", "Theme Tracker", "Kalender",
+     "Gate-Check", "Universum"])
 
 # ----- Tab 1: Aktien/ETF -----
 with tab_map:
@@ -1064,76 +1064,528 @@ def breadth_card(left_lbl: str, right_lbl: str, up: int, down: int,
     return " ".join(line.strip() for line in html.splitlines())
 
 
-with tab_breadth:
-    st.caption(
-        "Marktbreite gegen das S&P-500-Universum (rs_universe.csv) – "
-        "Proxy fuer den Gesamtmarkt, Stand letzter Handelstag."
-    )
-    if not st.session_state.get("breadth_on"):
-        st.button("Breadth berechnen (~2 Min beim ersten Mal, teilt sich den "
-                  "Download mit IBD-RS)", key="breadth_btn",
-                  on_click=lambda: st.session_state.update(breadth_on=True))
-    else:
-        wl_now = load_csv(WATCHLIST_FILE) if os.path.exists(WATCHLIST_FILE) \
-            else pd.DataFrame(columns=["Ticker"])
-        with st.spinner("Berechne Marktbreite..."):
-            b = compute_breadth(tuple(wl_now["Ticker"]))
-        if not b:
-            st.error("Breadth-Daten unvollstaendig – Universum pruefen.")
-        else:
-            row1 = (
-                breadth_card("Advancing", "Declining", b["adv"], b["dec"])
-                + breadth_card("New High", "New Low", b["nh"], b["nl"])
-                + breadth_card("Above", "Below", b["ab50"], b["bl50"], "SMA50")
-                + breadth_card("Above", "Below", b["ab200"], b["bl200"],
-                               "SMA200")
-            )
-            st.markdown(
-                f"<div style='display:flex;gap:10px;flex-wrap:wrap'>{row1}</div>",
-                unsafe_allow_html=True)
-            row2 = (
-                breadth_card("Up from Open", "Down from Open",
-                             b.get("up_open", 0), b.get("dn_open", 0))
-                + breadth_card("Up on Volume", "Down on Volume",
-                               b.get("up_vol", 0), b.get("dn_vol", 0))
-                + breadth_card("Up 4%", "Down 4%", b["up4"], b["dn4"])
-            )
-            st.markdown(
-                f"<div style='display:flex;gap:10px;flex-wrap:wrap;"
-                f"margin-top:10px'>{row2}</div>",
-                unsafe_allow_html=True)
+# ----- Daten aus dem taeglichen GitHub-Actions-Lauf (scanner/run_daily.py) -----
+DATA_DIR = os.path.join(BASE, "data")
+SCAN_DIR = os.path.join(DATA_DIR, "scan")
+SCANNER_CONFIG = os.path.join(BASE, "scanner_config.json")
+BREADTH_UNIVERSES = {
+    "sp500": "S&P 500", "nasdaq": "Nasdaq Composite", "r2000": "Russell 2000",
+    "all": "Gesamt (alle drei)", "scan": "Scanner-Liste",
+}
+BENCH_FOR = {"sp500": "SPY", "nasdaq": "QQQ", "r2000": "IWM",
+             "all": "SPY", "scan": "SPY"}
+BREADTH_RANGES = {"3M": 63, "6M": 126, "1J": 252, "2J": 504, "Alles": None}
+BREADTH_PANELS = ["Benchmark", "% ueber Moving Averages", "Stages",
+                  "Neue Hochs - Tiefs", "A/D-Linie", "McClellan-Oszillator",
+                  "Up 4% / Down 4%", "Stockbee-Ratio 5T / 10T",
+                  "+-25 % im Quartal", "Scanner-Treffer"]
+TREND_OPTS = {None: "aus", "stage2": "Stage 2 (ueber steigender SMA200)",
+              "sma50_above_sma200": "SMA50 > SMA200",
+              "above_sma200": "Close > SMA200"}
 
-            # Stage-Analyse als gestapelter Balken
-            s1, s2_, s3, s4 = b["stages"]
-            tot = max(s1 + s2_ + s3 + s4, 1)
-            seg = lambda n, col: (f"<div style='background:{col};"
-                                  f"width:{n/tot*100:.1f}%;height:100%'></div>")
-            st.markdown(
-                f"""<div style="margin:18px 0 4px">
-                <span style="color:#fff;font-weight:800">Stage Analysis
-                (Weinstein-Naeherung, SMA200)</span>
-                <div style="display:flex;background:#243063;border-radius:6px;
-                            height:12px;overflow:hidden;margin:8px 0">
-                  {seg(s1, "#8a93b8")}{seg(s2_, "#4da3ff")}
-                  {seg(s3, "#ffd166")}{seg(s4, "#ff5fa2")}
-                </div>
-                <div style="display:flex;gap:22px;font-size:13px;flex-wrap:wrap">
-                  <span style="color:#8a93b8">● Stage 1 (Boden):
-                    <b>{s1}</b> · {s1/tot*100:.0f} %</span>
-                  <span style="color:#4da3ff">● Stage 2 (Aufwaertstrend):
-                    <b>{s2_}</b> · {s2_/tot*100:.0f} %</span>
-                  <span style="color:#ffd166">● Stage 3 (Top):
-                    <b>{s3}</b> · {s3/tot*100:.0f} %</span>
-                  <span style="color:#ff5fa2">● Stage 4 (Abwaertstrend):
-                    <b>{s4}</b> · {s4/tot*100:.0f} %</span>
-                </div></div>""",
-                unsafe_allow_html=True,
-            )
-            st.caption(
-                f"Universum: {b['n']} Titel · Stand: {b['date']} · "
-                "Up/Down on Volume = Tagesrichtung bei Volumen ueber dem "
-                "50-Tage-Schnitt · NH/NL = 252-Tage-Extreme."
-            )
+
+def read_data_csv(path: str) -> pd.DataFrame:
+    """Daten-CSV lesen; Ticker wie 'NA' bleiben Ticker statt NaN."""
+    if not os.path.exists(path):
+        return pd.DataFrame()
+    df = pd.read_csv(path, keep_default_na=False, na_values=[""])
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"])
+    return df
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def load_breadth(freq: str) -> pd.DataFrame:
+    return read_data_csv(os.path.join(DATA_DIR, f"breadth_{freq}.csv"))
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def load_benchmarks() -> pd.DataFrame:
+    return read_data_csv(os.path.join(DATA_DIR, "benchmarks.csv"))
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def load_data_meta() -> dict:
+    import json as _json
+    path = os.path.join(DATA_DIR, "meta.json")
+    if not os.path.exists(path):
+        return {}
+    with open(path, encoding="utf-8") as f:
+        return _json.load(f)
+
+
+def breadth_derived(df: pd.DataFrame, freq: str) -> pd.DataFrame:
+    """A/D-Linie, NH-NL, McClellan und Stockbee-Ratios aus der Rohreihe."""
+    d = df.sort_values("date").set_index("date").copy()
+    d["ad_net"] = d["adv"] - d["dec"]
+    d["ad_line"] = d["ad_net"].cumsum()
+    d["nh_nl"] = d["nh"] - d["nl"]
+    tot = (d["adv"] + d["dec"]).where(lambda s: s > 0)
+    rana = (d["adv"] - d["dec"]) / tot * 1000       # ratio-adjusted
+    d["mcclellan"] = (rana.ewm(span=19, adjust=False).mean()
+                      - rana.ewm(span=39, adjust=False).mean())
+    if freq == "daily":
+        for n in (5, 10):
+            dn = d["dn4"].rolling(n).sum()
+            d[f"ratio{n}"] = d["up4"].rolling(n).sum() / dn.where(dn > 0)
+    else:
+        d["ratio5"] = d["up4"] / d["dn4"].where(d["dn4"] > 0)
+        d["ratio10"] = np.nan
+    return d
+
+
+def render_breadth_chart(d: pd.DataFrame, panels: list, bench: pd.Series | None,
+                         bench_sym: str, scan_n: pd.Series | None,
+                         freq: str) -> None:
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+
+    red, blue, yellow, pink = "#e05a5a", "#7aa2ff", "#ffd166", "#ff5fa2"
+    titles = {
+        "Benchmark": f"{bench_sym} (Schlusskurs)",
+        "% ueber Moving Averages": "% ueber SMA20 (gelb) · SMA50 (mint) · "
+                                   "SMA200 (blau) · T2108/SMA40 (pink)",
+        "Stages": "Stage 2 Aufwaertstrend (blau) vs. Stage 4 Abwaertstrend "
+                  "(pink) in %",
+        "Neue Hochs - Tiefs": "Neue 52W-Hochs minus -Tiefs",
+        "A/D-Linie": "Advance/Decline-Linie (kumuliert)",
+        "McClellan-Oszillator": "McClellan-Oszillator (ratio-adjusted)",
+        "Up 4% / Down 4%": "Up 4 % (mint) / Down 4 % (rot) mit Volumen",
+        "Stockbee-Ratio 5T / 10T": ("Up4/Down4-Ratio 5 Tage (mint) · "
+                                    "10 Tage (gelb)" if freq == "daily"
+                                    else "Up4/Down4-Ratio je Woche"),
+        "+-25 % im Quartal": "+25 % (mint) / -25 % (rot) in 65 Tagen",
+        "Scanner-Treffer": "Titel, die den Scanner bestanden haetten",
+    }
+    fig = make_subplots(rows=len(panels), cols=1, shared_xaxes=True,
+                        vertical_spacing=0.045,
+                        subplot_titles=[titles[p] for p in panels])
+    x = d.index
+    sign_colors = lambda s: [MINT if v >= 0 else red for v in s.fillna(0)]
+
+    for row, p in enumerate(panels, start=1):
+        add = lambda tr: fig.add_trace(tr, row=row, col=1)
+        if p == "Benchmark" and bench is not None:
+            add(go.Scatter(x=x, y=bench.reindex(x), name=bench_sym,
+                           line=dict(color="#ffffff", width=1.6)))
+        elif p == "% ueber Moving Averages":
+            for col, nm, c in [("p_ab20", "SMA20", yellow), ("p_ab50", "SMA50", MINT),
+                               ("p_ab200", "SMA200", blue), ("p_ab40", "T2108", pink)]:
+                add(go.Scatter(x=x, y=d[col], name=nm,
+                               line=dict(color=c, width=1.5)))
+            for lvl in (20, 80):
+                fig.add_hline(y=lvl, line=dict(color="#4a5a8a", dash="dot",
+                                               width=1), row=row, col=1)
+        elif p == "Stages":
+            add(go.Scatter(x=x, y=d["p_s2"], name="Stage 2",
+                           line=dict(color=blue, width=1.8)))
+            add(go.Scatter(x=x, y=d["p_s4"], name="Stage 4",
+                           line=dict(color=pink, width=1.8)))
+        elif p == "Neue Hochs - Tiefs":
+            add(go.Bar(x=x, y=d["nh_nl"], name="NH-NL",
+                       marker_color=sign_colors(d["nh_nl"])))
+        elif p == "A/D-Linie":
+            add(go.Scatter(x=x, y=d["ad_line"], name="A/D",
+                           line=dict(color=MINT, width=1.6)))
+        elif p == "McClellan-Oszillator":
+            add(go.Bar(x=x, y=d["mcclellan"], name="McClellan",
+                       marker_color=sign_colors(d["mcclellan"])))
+        elif p == "Up 4% / Down 4%":
+            add(go.Bar(x=x, y=d["up4"], name="Up 4%", marker_color=MINT))
+            add(go.Bar(x=x, y=-d["dn4"], name="Down 4%", marker_color=red))
+        elif p == "Stockbee-Ratio 5T / 10T":
+            add(go.Scatter(x=x, y=d["ratio5"], name="Ratio 5T",
+                           line=dict(color=MINT, width=1.5)))
+            if d["ratio10"].notna().any():
+                add(go.Scatter(x=x, y=d["ratio10"], name="Ratio 10T",
+                               line=dict(color=yellow, width=1.5)))
+            fig.add_hline(y=1, line=dict(color="#4a5a8a", dash="dot", width=1),
+                          row=row, col=1)
+        elif p == "+-25 % im Quartal":
+            add(go.Bar(x=x, y=d["up25q"], name="+25 %", marker_color=MINT))
+            add(go.Bar(x=x, y=-d["dn25q"], name="-25 %", marker_color=red))
+        elif p == "Scanner-Treffer" and scan_n is not None:
+            add(go.Bar(x=x, y=scan_n.reindex(x), name="Treffer",
+                       marker_color=blue))
+
+    fig.update_layout(
+        height=210 * len(panels) + 40, margin=dict(t=30, l=0, r=0, b=0),
+        paper_bgcolor=NAVY_BG, plot_bgcolor=NAVY_BG, font=dict(color="#fff"),
+        showlegend=False, barmode="relative", bargap=0.15, hovermode="x unified",
+    )
+    fig.update_annotations(font=dict(size=12, color="#cfd6f0"), x=0,
+                           xanchor="left")
+    fig.update_xaxes(gridcolor="#243063",
+                     rangebreaks=[dict(bounds=["sat", "mon"])]
+                     if freq == "daily" else None)
+    fig.update_yaxes(gridcolor="#243063", zerolinecolor="#4a5a8a")
+    st.plotly_chart(fig, use_container_width=True, key="breadth_hist")
+
+
+with tab_breadth:
+    meta_b = load_data_meta()
+    raw_b = pd.DataFrame()
+    if meta_b:
+        bc1, bc2, bc3 = st.columns([2, 1.2, 2.2])
+        with bc1:
+            br_uni = st.selectbox("Universum", list(BREADTH_UNIVERSES),
+                                  format_func=BREADTH_UNIVERSES.get,
+                                  key="br_uni", label_visibility="collapsed")
+        with bc2:
+            br_freq_lbl = st.radio("Ansicht", ["Tag", "Woche"], horizontal=True,
+                                   key="br_freq", label_visibility="collapsed")
+        with bc3:
+            br_rng = st.radio("Zeitraum", list(BREADTH_RANGES), index=2,
+                              horizontal=True, key="br_rng",
+                              label_visibility="collapsed")
+        br_freq = "daily" if br_freq_lbl == "Tag" else "weekly"
+        raw_b = load_breadth(br_freq)
+
+    if raw_b.empty:
+        st.info("Noch keine Breadth-Historie im Repo. Auf GitHub unter "
+                "**Actions -> Daily Breadth -> Run workflow** einmal mit "
+                "`backfill_years = 2` starten; danach laeuft die Erfassung "
+                "jeden Handelstag automatisch.")
+    else:
+        d_all = breadth_derived(raw_b[raw_b["universe"] == br_uni], br_freq)
+        n_rows = BREADTH_RANGES[br_rng]
+        if n_rows and br_freq == "weekly":
+            n_rows = max(n_rows // 5, 4)
+        d_b = d_all.iloc[-n_rows:] if n_rows else d_all
+
+        # --- Karten: letzter Tag / letzte Woche ---
+        last_b = d_all.iloc[-1]
+        n_b = int(last_b["n"])
+
+        def split(p):
+            up = int(round((p if pd.notna(p) else 0) / 100 * n_b))
+            return up, max(n_b - up, 0)
+
+        row1 = (
+            breadth_card("Advancing", "Declining", int(last_b["adv"]),
+                         int(last_b["dec"]))
+            + breadth_card("New High", "New Low", int(last_b["nh"]),
+                           int(last_b["nl"]))
+            + breadth_card("Above", "Below", *split(last_b["p_ab50"]), "SMA50")
+            + breadth_card("Above", "Below", *split(last_b["p_ab200"]), "SMA200")
+        )
+        row2 = (
+            breadth_card("Up on Volume", "Down on Volume",
+                         int(last_b["up_vol"]), int(last_b["dn_vol"]))
+            + breadth_card("Up 4%", "Down 4%", int(last_b["up4"]),
+                           int(last_b["dn4"]))
+            + breadth_card("+25% Quartal", "-25% Quartal",
+                           int(last_b["up25q"]), int(last_b["dn25q"]))
+            + breadth_card("EMA10>20>SMA50", "nicht", *split(last_b["p_stack"]))
+        )
+        st.markdown(f"<div style='display:flex;gap:10px;flex-wrap:wrap'>{row1}"
+                    f"</div><div style='display:flex;gap:10px;flex-wrap:wrap;"
+                    f"margin-top:10px'>{row2}</div>", unsafe_allow_html=True)
+        per = "Woche bis" if br_freq == "weekly" else "Stand"
+        st.caption(
+            f"{BREADTH_UNIVERSES[br_uni]} · {n_b} Titel · {per} "
+            f"{d_all.index[-1]:%d.%m.%Y} · Stage 2: {last_b['p_s2']:.0f} % · "
+            f"Stage 4: {last_b['p_s4']:.0f} % · T2108: {last_b['p_ab40']:.0f} % · "
+            f"McClellan: {last_b['mcclellan']:+.0f}"
+            + (" · Woche: Hochs/Tiefs, Up4/Down4 und Volumen = Wochensumme"
+               if br_freq == "weekly" else ""))
+
+        # --- Verlauf ---
+        default_panels = ["Benchmark", "% ueber Moving Averages",
+                          "Neue Hochs - Tiefs", "Up 4% / Down 4%",
+                          "McClellan-Oszillator"]
+        if br_uni == "scan":
+            default_panels = ["Benchmark", "Scanner-Treffer",
+                              "% ueber Moving Averages", "Up 4% / Down 4%"]
+        panels = st.multiselect("Charts", BREADTH_PANELS, default=default_panels,
+                                key=f"br_panels_{br_uni}")
+        bench_df = load_benchmarks()
+        bsym = BENCH_FOR[br_uni]
+        bench_s = (bench_df.set_index("date")[bsym]
+                   if not bench_df.empty and bsym in bench_df else None)
+        scan_rows = raw_b[raw_b["universe"] == "scan"].set_index("date")["n"]
+        if panels:
+            render_breadth_chart(d_b, [p for p in BREADTH_PANELS if p in panels],
+                                 bench_s, bsym, scan_rows, br_freq)
+
+        # --- Market Monitor (Stockbee-Stil) ---
+        st.markdown("#### Market Monitor")
+        mon = d_all.iloc[::-1].head(30 if br_freq == "daily" else 26)
+        mon_tbl = pd.DataFrame({
+            "Datum": mon.index.strftime("%d.%m.%y"),
+            "Up 4%": mon["up4"], "Down 4%": mon["dn4"],
+            "Ratio 5T": mon["ratio5"], "Ratio 10T": mon["ratio10"],
+            "+25% Q": mon["up25q"], "-25% Q": mon["dn25q"],
+            "+13% 34T": mon["up13_34"], "-13% 34T": mon["dn13_34"],
+            "NH": mon["nh"], "NL": mon["nl"],
+            "% >SMA20": mon["p_ab20"], "T2108": mon["p_ab40"],
+            "% >SMA50": mon["p_ab50"], "% >SMA200": mon["p_ab200"],
+            "% Stage 2": mon["p_s2"],
+            bsym: (bench_s.reindex(mon.index).values
+                   if bench_s is not None else np.nan),
+        })
+
+        def col_ratio(v):
+            if pd.isna(v):
+                return ""
+            if v >= 2:
+                return "background-color: rgba(63,224,160,0.7); color: #fff"
+            if v <= 0.5:
+                return "background-color: rgba(224,90,90,0.7); color: #fff"
+            return ""
+
+        def col_level(v):
+            if pd.isna(v):
+                return ""
+            if v >= 60:
+                return f"background-color: rgba(63,224,160,{min((v-50)/60, .8):.2f}); color: #fff"
+            if v <= 40:
+                return f"background-color: rgba(224,90,90,{min((50-v)/60, .8):.2f}); color: #fff"
+            return ""
+
+        def hl_pairs(row):
+            styles = [""] * len(row)
+            for a, b in (("Up 4%", "Down 4%"), ("+25% Q", "-25% Q"),
+                         ("+13% 34T", "-13% 34T"), ("NH", "NL")):
+                ia, ib = row.index.get_loc(a), row.index.get_loc(b)
+                if row[a] > row[b] * 1.5:
+                    styles[ia] = "color: #3fe0a0; font-weight: 700"
+                elif row[b] > row[a] * 1.5:
+                    styles[ib] = "color: #e05a5a; font-weight: 700"
+            return styles
+
+        pct_mon = ["% >SMA20", "T2108", "% >SMA50", "% >SMA200", "% Stage 2"]
+        st.dataframe(
+            mon_tbl.style
+            .apply(hl_pairs, axis=1)
+            .map(col_ratio, subset=["Ratio 5T", "Ratio 10T"])
+            .map(col_level, subset=pct_mon)
+            .format({"Ratio 5T": "{:.2f}", "Ratio 10T": "{:.2f}", bsym: "{:,.2f}",
+                     **{c: "{:.1f}" for c in pct_mon}}, na_rep="–"),
+            use_container_width=True, hide_index=True,
+            height=42 + 35 * len(mon_tbl),
+        )
+        st.caption(
+            f"Letzter Datenlauf: {meta_b.get('last_run_utc', '?')} UTC · "
+            f"{meta_b.get('tickers_loaded', '?')}/{meta_b.get('tickers_requested', '?')} "
+            f"Titel geladen · Russell 2000: {meta_b.get('r2000_source', '?')} · "
+            "Historie mit heutiger Index-Zusammensetzung (Survivorship-Bias) · "
+            "Up/Down 4 % = Stockbee (Volumen > Vortag, >= 100k) · "
+            "NH/NL = 252-Tage-Extreme.")
+
+# ----- Tab: Scanner (eigene Universumsliste) -----
+@st.cache_data(ttl=600, show_spinner=False)
+def load_scan_snapshot() -> pd.DataFrame:
+    return read_data_csv(os.path.join(SCAN_DIR, "snapshot.csv"))
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def load_scan_history() -> pd.DataFrame:
+    return read_data_csv(os.path.join(SCAN_DIR, "scan_history.csv"))
+
+
+def load_scanner_config() -> dict:
+    import json as _json
+    if not os.path.exists(SCANNER_CONFIG):
+        return {}
+    with open(SCANNER_CONFIG, encoding="utf-8") as f:
+        return {k: v for k, v in _json.load(f).items() if not k.startswith("_")}
+
+
+with tab_scan:
+    snap = load_scan_snapshot()
+    if snap.empty:
+        st.info("Noch kein Scanner-Snapshot – er entsteht beim taeglichen "
+                "GitHub-Actions-Lauf (data/scan/snapshot.csv).")
+    else:
+        cfg_s = load_scanner_config()
+
+        def fnum(col, label, key, default, step=1.0, scale=1.0):
+            val = None if default is None else float(default) / scale
+            return col.number_input(label, value=val, step=step, key=key,
+                                    placeholder="aus")
+
+        with st.expander("Filter", expanded=True):
+            f1 = st.columns(4)
+            f_uni = f1[0].multiselect("Index", ["S&P 500", "Nasdaq", "Russell 2000"],
+                                      placeholder="alle", key="sc_uni")
+            f_sec = f1[1].multiselect("Sektor", sorted(snap["Sector"].dropna().unique()),
+                                      placeholder="alle", key="sc_sec")
+            trend_keys = list(TREND_OPTS)
+            f_trend = f1[2].selectbox(
+                "Trend", trend_keys, format_func=TREND_OPTS.get, key="sc_trend",
+                index=trend_keys.index(cfg_s.get("trend"))
+                if cfg_s.get("trend") in trend_keys else 0)
+            f_rs = fnum(f1[3], "RS min (1-99)", "sc_rs", cfg_s.get("min_rs"))
+
+            f2 = st.columns(4)
+            f_price = fnum(f2[0], "Kurs min $", "sc_price", cfg_s.get("min_price"))
+            f_cap = fnum(f2[1], "Market Cap min (Mio $)", "sc_cap",
+                         cfg_s.get("min_market_cap"), step=100.0, scale=1e6)
+            f_avol = fnum(f2[2], "AVOL min (Tsd. Stueck)", "sc_avol",
+                          cfg_s.get("min_avol"), step=100.0, scale=1e3)
+            f_rvol = fnum(f2[3], "RVOL min", "sc_rvol", cfg_s.get("min_rvol"), step=0.1)
+
+            f3 = st.columns(6)
+            f_atr_lo = fnum(f3[0], "ATR% min", "sc_atr_lo", cfg_s.get("min_atr_pct"), 0.5)
+            f_atr_hi = fnum(f3[1], "ATR% max", "sc_atr_hi", cfg_s.get("max_atr_pct"), 0.5)
+            f_g50_lo = fnum(f3[2], "Gain vom MA50 % min", "sc_g_lo", cfg_s.get("min_gain50"))
+            f_g50_hi = fnum(f3[3], "Gain vom MA50 % max", "sc_g_hi", cfg_s.get("max_gain50"))
+            f_ax_lo = fnum(f3[4], "ATR%-Multiple MA50 min", "sc_ax_lo",
+                           cfg_s.get("min_atrx50"), 0.5)
+            f_ax_hi = fnum(f3[5], "ATR%-Multiple MA50 max", "sc_ax_hi",
+                           cfg_s.get("max_atrx50"), 0.5)
+
+            f4 = st.columns(3)
+            f_c10 = f4[0].checkbox("Close > EMA10", key="sc_c10",
+                                   value=bool(cfg_s.get("close_above_ema10")))
+            f_c20 = f4[1].checkbox("Close > EMA20", key="sc_c20",
+                                   value=bool(cfg_s.get("close_above_ema20")))
+            f_stack = f4[2].checkbox("EMA10 + EMA20 ueber SMA50", key="sc_stack",
+                                     value=bool(cfg_s.get("ema10_20_above_sma50")))
+
+        res = snap.copy()
+        m = pd.Series(True, index=res.index)
+
+        def rng(col, lo, hi, scale=1.0):
+            global m
+            if lo is not None:
+                m &= res[col] >= lo * scale
+            if hi is not None:
+                m &= res[col] <= hi * scale
+
+        if f_uni:
+            um = pd.Series(False, index=res.index)
+            for lbl, col in (("S&P 500", "SP500"), ("Nasdaq", "NASDAQ"),
+                             ("Russell 2000", "R2000")):
+                if lbl in f_uni:
+                    um |= res[col].astype(bool)
+            m &= um
+        if f_sec:
+            m &= res["Sector"].isin(f_sec)
+        rng("RS", f_rs, None)
+        rng("Price", f_price, None)
+        rng("MarketCap", f_cap, None, 1e6)
+        rng("AVOL", f_avol, None, 1e3)
+        rng("RVOL", f_rvol, None)
+        rng("ATR%", f_atr_lo, f_atr_hi)
+        rng("Gain50%", f_g50_lo, f_g50_hi)
+        rng("ATRx50", f_ax_lo, f_ax_hi)
+        if f_c10:
+            m &= res["Price"] > res["EMA10"]
+        if f_c20:
+            m &= res["Price"] > res["EMA20"]
+        if f_stack:
+            m &= (res["EMA10"] > res["SMA50"]) & (res["EMA20"] > res["SMA50"])
+        if f_trend == "stage2":
+            m &= res["Stage"] == 2
+        elif f_trend == "sma50_above_sma200":
+            m &= res["SMA50"] > res["SMA200"]
+        elif f_trend == "above_sma200":
+            m &= res["Price"] > res["SMA200"]
+        res = res[m].copy()
+
+        # "Neu" = heute in der gespeicherten Scanner-Liste, gestern nicht
+        hist_s = load_scan_history()
+        new_set = set()
+        if not hist_s.empty:
+            days_s = sorted(hist_s["date"].unique())
+            today_hits = set(hist_s.loc[hist_s["date"] == days_s[-1], "Ticker"])
+            prev_hits = (set(hist_s.loc[hist_s["date"] == days_s[-2], "Ticker"])
+                         if len(days_s) > 1 else set())
+            new_set = today_hits - prev_hits
+        res.insert(1, "Neu", res["Ticker"].map(lambda t: "★" if t in new_set else ""))
+
+        res = res.sort_values(["RS", "Gain50%"], ascending=False).reset_index(drop=True)
+        view = pd.DataFrame({
+            "Ticker": res["Ticker"], "Neu": res["Neu"], "Name": res["Name"],
+            "Sektor": res["Sector"], "Branche": res["Industry"],
+            "Cap Mrd $": res["MarketCap"] / 1e9, "Kurs": res["Price"],
+            "1D %": res["Chg%"], "ATR%": res["ATR%"], "Gain MA50 %": res["Gain50%"],
+            "ATRx MA50": res["ATRx50"], "AVOL Mio": res["AVOL"] / 1e6,
+            "RVOL": res["RVOL"], "RS": res["RS"].astype("Int64"),
+            "Stage": res["Stage"].astype("Int64"), "1M %": res["Perf1M%"],
+            "3M %": res["Perf3M%"], "vom Hoch %": res["FromHigh%"],
+        })
+
+        def col_atrx(v):
+            if pd.isna(v):
+                return ""
+            if v > 4:
+                return "background-color: rgba(224,90,90,0.65); color: #fff"
+            if v < 0:
+                return "color: #9fb0e8"
+            return ""
+
+        def col_rvol_s(v):
+            if pd.isna(v):
+                return ""
+            return ("background-color: rgba(63,224,160,0.75); color: #fff"
+                    if v >= 1.5 else "")
+
+        st.markdown(f"**{len(view)} Treffer** von {len(snap)} Titeln"
+                    + (f" · ★ neu in der gespeicherten Liste: {len(new_set)}"
+                       if new_set else ""))
+        ev_s = st.dataframe(
+            view.style
+            .map(col_pct, subset=["1D %", "1M %", "3M %"])
+            .map(col_atrx, subset=["ATRx MA50"])
+            .map(col_rvol_s, subset=["RVOL"])
+            .format({"Cap Mrd $": "{:,.2f}", "Kurs": "{:,.2f}", "1D %": "{:+.2f}",
+                     "ATR%": "{:.2f}", "Gain MA50 %": "{:+.1f}",
+                     "ATRx MA50": "{:+.2f}", "AVOL Mio": "{:.2f}",
+                     "RVOL": "{:.2f}", "1M %": "{:+.1f}", "3M %": "{:+.1f}",
+                     "vom Hoch %": "{:+.1f}"}, na_rep="–"),
+            use_container_width=True, hide_index=True,
+            height=min(42 + 35 * len(view), 900), key="scan_table",
+            on_select="rerun", selection_mode="single-row")
+        try:
+            sel_rows = ev_s["selection"]["rows"]
+        except (TypeError, KeyError):
+            sel_rows = []
+        if sel_rows:
+            sym_s = str(view.iloc[sel_rows[0]]["Ticker"])
+            render_detail_chart(sym_s, str(view.iloc[sel_rows[0]]["Name"]))
+
+        ex1, ex2 = st.columns(2)
+        with ex1:
+            st.download_button("Treffer als CSV", view.to_csv(index=False),
+                               file_name="scanner_treffer.csv", mime="text/csv")
+            tv = ",".join(f"{e}:{t}" for e, t in zip(res["Exchange"], res["Ticker"])
+                          if e in ("NASDAQ", "NYSE", "AMEX"))
+            st.text_area("TradingView-Watchlist (kopieren & importieren)", tv,
+                         height=90)
+        with ex2:
+            new_cfg = {
+                "min_price": f_price, "min_market_cap": f_cap * 1e6 if f_cap else None,
+                "min_avol": f_avol * 1e3 if f_avol else None, "min_rvol": f_rvol,
+                "min_atr_pct": f_atr_lo, "max_atr_pct": f_atr_hi,
+                "min_gain50": f_g50_lo, "max_gain50": f_g50_hi,
+                "min_atrx50": f_ax_lo, "max_atrx50": f_ax_hi,
+                "close_above_ema10": f_c10, "close_above_ema20": f_c20,
+                "ema10_20_above_sma50": f_stack, "trend": f_trend,
+            }
+            if st.button("Filter als Scanner-Liste speichern", type="primary"):
+                import json as _json
+                with open(SCANNER_CONFIG, "w", encoding="utf-8") as f:
+                    _json.dump({"_hinweis": "Scanner-Kriterien fuer die eigene "
+                                "Universumsliste. null = Filter aus.", **new_cfg},
+                               f, indent=2)
+                st.success("scanner_config.json gespeichert – gilt ab dem "
+                           "naechsten Datenlauf.")
+            st.caption("Lokal wird die Datei direkt gespeichert. In der Cloud "
+                       "ist das Dateisystem fluechtig: dort den Inhalt unten in "
+                       "scanner_config.json im GitHub-Repo einfuegen. RS-Filter "
+                       "und Index/Sektor wirken nur hier in der Ansicht.")
+            import json as _json
+            st.code(_json.dumps(new_cfg, indent=2), language="json")
+
+        st.caption(
+            f"Stand {load_data_meta().get('last_date', '?')} · ATR% = ATR14/Kurs · "
+            "Gain MA50 = Abstand zum SMA50 · ATRx MA50 = Gain MA50 / ATR% "
+            "(rot > 4 = ueberdehnt) · AVOL = Ø Volumen 50T · RVOL = Volumen / "
+            "AVOL · RS = IBD-Stil gegen alle ~4.400 Titel · ★ = neu in der "
+            "gespeicherten Scanner-Liste.")
 
 # ----- Tab: Index-Maps (Finviz-Stil) -----
 INDEX_FILES = {

@@ -1,0 +1,17 @@
+{
+  "_hinweis": "Scanner-Kriterien fuer die eigene Universumsliste. null = Filter aus. Aenderungen hier im Repo gelten ab dem naechsten taeglichen Lauf.",
+  "min_price": 5,
+  "min_market_cap": 300000000,
+  "min_avol": 500000,
+  "min_rvol": null,
+  "min_atr_pct": 2.5,
+  "max_atr_pct": null,
+  "min_gain50": 0,
+  "max_gain50": null,
+  "min_atrx50": null,
+  "max_atrx50": 4,
+  "close_above_ema10": false,
+  "close_above_ema20": true,
+  "ema10_20_above_sma50": true,
+  "trend": "stage2"
+}
