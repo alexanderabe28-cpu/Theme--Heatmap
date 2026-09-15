@@ -1,26 +1,26 @@
-﻿{
-    "last_run_utc":  "2026-09-14 18:16",
-    "last_date":  "2026-09-11",
-    "tickers_requested":  4441,
-    "tickers_loaded":  4441,
-    "tickers_failed":  0,
-    "scan_hits":  121,
-    "scan_config":  {
-                        "min_price":  5,
-                        "min_market_cap":  300000000,
-                        "min_avol":  500000,
-                        "min_rvol":  null,
-                        "min_atr_pct":  2.5,
-                        "max_atr_pct":  null,
-                        "min_gain50":  0,
-                        "max_gain50":  null,
-                        "min_atrx50":  null,
-                        "max_atrx50":  4,
-                        "close_above_ema10":  false,
-                        "close_above_ema20":  true,
-                        "ema10_20_above_sma50":  true,
-                        "trend":  "stage2"
-                    },
-    "r2000_source":  "Proxy (Market-Cap-Rang 1001-3000)",
-    "universe_updated":  "2026-09-14"
+{
+  "last_run_utc": "2026-09-15 00:58",
+  "last_date": "2026-09-14",
+  "tickers_requested": 4441,
+  "tickers_loaded": 4441,
+  "tickers_failed": 0,
+  "scan_hits": 113,
+  "scan_config": {
+    "min_price": 5,
+    "min_market_cap": 300000000,
+    "min_avol": 500000,
+    "min_rvol": null,
+    "min_atr_pct": 2.5,
+    "max_atr_pct": null,
+    "min_gain50": 0,
+    "max_gain50": null,
+    "min_atrx50": null,
+    "max_atrx50": 4,
+    "close_above_ema10": false,
+    "close_above_ema20": true,
+    "ema10_20_above_sma50": true,
+    "trend": "stage2"
+  },
+  "r2000_source": "Proxy (Market-Cap-Rang 1001-3000)",
+  "universe_updated": "2026-09-14"
 }

@@ -1,5 +1,4 @@
 Ticker,Name,Sector,Industry
-ABCL,AbCellera Biologics Inc. Common Shares,Health Care,Biotechnology: Pharmaceutical Preparations
 ABUS,Arbutus Biopharma Corporation,Health Care,Biotechnology: Pharmaceutical Preparations
 ADM,Archer-Daniels-Midland Company,Consumer Staples,Packaged Foods
 AESI,Atlas Energy Solutions Inc.,Industrials,Mining & Quarrying of Nonmetallic Minerals (No Fuels)
@@ -15,12 +14,11 @@ BBY,Best Buy Co. Inc.,Consumer Discretionary,Consumer Electronics/Video Chains
 BG,Bunge Limited Common Shares,Consumer Staples,Packaged Foods
 BGC,BGC Group Inc.,Finance,Investment Bankers/Brokers/Service
 BIIB,Biogen Inc.,Health Care,Biotechnology: Biological Products (No Diagnostic Substances)
-BMRN,BioMarin Pharmaceutical Inc.,Health Care,Biotechnology: Pharmaceutical Preparations
 CF,CF Industries Holdings Inc.,Industrials,Agricultural Chemicals
-CHRD,Chord Energy Corporation,Energy,Oil & Gas Production
 CMPS,COMPASS Pathways Plc American Depository Shares,Health Care,Biotechnology: Pharmaceutical Preparations
 CNC,Centene Corporation,Health Care,Medical Specialities
 CNR,Core Natural Resources Inc.,Energy,Coal Mining
+COHU,Cohu Inc.,Industrials,Electrical Products
 CRC,California Resources Corporation,Energy,Oil & Gas Production
 CRCT,Cricut Inc.,Technology,Industrial Machinery/Components
 CXW,CoreCivic Inc.,Real Estate,Real Estate Investment Trusts
@@ -40,7 +38,6 @@ FOXA,Fox Corporation,Industrials,Broadcasting
 GCT,GigaCloud Technology Inc Class A,Consumer Discretionary,Catalog/Specialty Distribution
 GEN,Gen Digital Inc.,Technology,Computer Software: Prepackaged Software
 GEO,Geo Group Inc (The) REIT,Consumer Discretionary,Homebuilding
-GLNG,Golar Lng Ltd,Consumer Discretionary,Marine Transportation
 GOLD,Gold.com Inc.,Industrials,Other Specialty Stores
 GRNT,Granite Ridge Resources Inc.,Energy,Oil & Gas Production
 HAL,Halliburton Company,Energy,Oilfield Services/Equipment
@@ -77,7 +74,6 @@ NUAI,New Era Energy & Digital Inc.,Energy,Oil & Gas Production
 NUE,Nucor Corporation,Industrials,Steel/Iron Ore
 NVAX,Novavax Inc.,Health Care,Biotechnology: Biological Products (No Diagnostic Substances)
 OII,Oceaneering International Inc.,Energy,Oilfield Services/Equipment
-OKE,ONEOK Inc.,Utilities,Oil & Gas Production
 OKTA,Okta Inc.,Technology,Computer Software: Prepackaged Software
 PARR,Par Pacific Holdings Inc.,Energy,Oil & Gas Production
 PAYS,Paysign Inc.,Technology,EDP Services
@@ -90,33 +86,29 @@ RES,RPC Inc.,Energy,Oilfield Services/Equipment
 RIOT,Riot Platforms Inc. Common Stock ,Finance,Finance: Consumer Services
 ROIV,Roivant Sciences Ltd. Common Shares,Health Care,Biotechnology: Pharmaceutical Preparations
 RVTY,Revvity Inc.,Industrials,Biotechnology: Laboratory Analytical Instruments
+SANM,Sanmina Corporation,Technology,Electrical Products
 SBLK,Star Bulk Carriers Corp. Common Shares,Consumer Discretionary,Marine Transportation
+SEI,Solaris Energy Infrastructure Inc.,Consumer Discretionary,Oil and Gas Field Machinery
 SG,Sweetgreen Inc.,Consumer Discretionary,Restaurants
 SLB,SLB Limited Common Shares,Energy,Oilfield Services/Equipment
-SMTC,Semtech Corporation,Technology,Semiconductors
 SNDK,Sandisk Corporation,Technology,Electronic Components
 SPT,Sprout Social Inc,Technology,Computer Software: Prepackaged Software
 SRPT,Sarepta Therapeutics Inc. Common Stock (DE),Health Care,Biotechnology: Pharmaceutical Preparations
 SSRM,SSR Mining Inc.,Industrials,Precious Metals
 STLN,Starling Oncology Inc.,Health Care,Medical/Nursing Services
 SXC,SunCoke Energy Inc.,Industrials,Steel/Iron Ore
-TALO,Talos Energy Inc.,Energy,Oil & Gas Production
 TARS,Tarsus Pharmaceuticals Inc.,Health Care,Biotechnology: Biological Products (No Diagnostic Substances)
 TDW,Tidewater Inc.,Consumer Discretionary,Marine Transportation
 TER,Teradyne Inc.,Industrials,Electrical Products
 TH,Target Hospitality Corp.,Consumer Discretionary,Hotels/Resorts
-TMO,Thermo Fisher Scientific Inc,Industrials,Industrial Machinery/Components
 TPC,Tutor Perini Corporation,Consumer Discretionary,General Bldg Contractors - Nonresidential Bldgs
-TRGP,Targa Resources Inc.,Utilities,Natural Gas Distribution
 TVTX,Travere Therapeutics Inc.,Health Care,Biotechnology: Pharmaceutical Preparations
 URBN,Urban Outfitters Inc.,Consumer Discretionary,Clothing/Shoe/Accessory Stores
 VIR,Vir Biotechnology Inc.,Health Care,Biotechnology: Biological Products (No Diagnostic Substances)
 VRNS,Varonis Systems Inc.,Technology,Computer Software: Prepackaged Software
-VRSN,VeriSign Inc.,Technology,EDP Services
 WAT,Waters Corporation,Industrials,Biotechnology: Laboratory Analytical Instruments
 WHD,Cactus Inc.,Consumer Discretionary,Oil and Gas Field Machinery
 WT,WisdomTree Inc.,Finance,Investment Bankers/Brokers/Service
 WTTR,Select Water Solutions Inc. Class A common stock,Energy,Oilfield Services/Equipment
 WWW,Wolverine World Wide Inc.,Consumer Discretionary,Shoe Manufacturing
-ZD,Ziff Davis Inc.,Telecommunications,Telecommunications Equipment
 ZVRA,Zevra Therapeutics Inc.,Health Care,Biotechnology: Pharmaceutical Preparations
