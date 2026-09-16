@@ -1,114 +1,117 @@
 Ticker,Name,Sector,Industry
-ABUS,Arbutus Biopharma Corporation,Health Care,Biotechnology: Pharmaceutical Preparations
 ADM,Archer-Daniels-Midland Company,Consumer Staples,Packaged Foods
-AESI,Atlas Energy Solutions Inc.,Industrials,Mining & Quarrying of Nonmetallic Minerals (No Fuels)
+ADPT,Adaptive Biotechnologies Corporation,Health Care,Biotechnology: Biological Products (No Diagnostic Substances)
 AMCX,AMC Global Media Inc.,Telecommunications,Cable & Other Pay Television Services
-ANET,Arista Networks Inc.,Telecommunications,Computer Communications Equipment
-APH,Amphenol Corporation,Technology,Electrical Products
+AMN,AMN Healthcare Services Inc,Consumer Discretionary,Professional Services
 APPS,Digital Turbine Inc.,Miscellaneous,Multi-Sector Companies
 ASND,Ascendis Pharma A/S Ordinary Share,Health Care,Biotechnology: Pharmaceutical Preparations
+ASO,Academy Sports and Outdoors Inc.,Consumer Discretionary,Other Specialty Stores
 AUPH,Aurinia Pharmaceuticals Inc,Health Care,Biotechnology: Pharmaceutical Preparations
 AVT,Avnet Inc.,Technology,Electronic Components
-AYA,Aya Gold & Silver Inc. Common Shares,Basic Materials,Precious Metals
+AZTA,Azenta Inc.,Technology,Industrial Machinery/Components
 BBY,Best Buy Co. Inc.,Consumer Discretionary,Consumer Electronics/Video Chains
+BFH,Bread Financial Holdings Inc.,Consumer Discretionary,Business Services
 BG,Bunge Limited Common Shares,Consumer Staples,Packaged Foods
 BGC,BGC Group Inc.,Finance,Investment Bankers/Brokers/Service
 BIIB,Biogen Inc.,Health Care,Biotechnology: Biological Products (No Diagnostic Substances)
+BLFS,BioLife Solutions Inc.,Health Care,Biotechnology: Electromedical & Electrotherapeutic Apparatus
+BOX,Box Inc.,Technology,Computer Software: Prepackaged Software
+BWIN,The Baldwin Insurance Group Inc.,Finance,Specialty Insurers
+CART,Maplebear Inc.,Consumer Discretionary,Business Services
 CF,CF Industries Holdings Inc.,Industrials,Agricultural Chemicals
+CHEF,The Chefs' Warehouse Inc.,Consumer Discretionary,Food Distributors
+CHRD,Chord Energy Corporation,Energy,Oil & Gas Production
+CLOV,Clover Health Investments Corp.,Health Care,Medical Specialities
+CMG,Chipotle Mexican Grill Inc.,Consumer Discretionary,Restaurants
 CMPS,COMPASS Pathways Plc American Depository Shares,Health Care,Biotechnology: Pharmaceutical Preparations
 CNC,Centene Corporation,Health Care,Medical Specialities
-CNR,Core Natural Resources Inc.,Energy,Coal Mining
-COHU,Cohu Inc.,Industrials,Electrical Products
+COKE,Coca-Cola Consolidated Inc.,Consumer Staples,Beverages (Production/Distribution)
 CRC,California Resources Corporation,Energy,Oil & Gas Production
 CRCT,Cricut Inc.,Technology,Industrial Machinery/Components
+CRSR,Corsair Gaming Inc.,Technology,Computer peripheral equipment
+CRWD,CrowdStrike Holdings Inc.,Technology,Computer Software: Prepackaged Software
 CXW,CoreCivic Inc.,Real Estate,Real Estate Investment Trusts
-DAN,Dana Incorporated Common Stock ,Consumer Discretionary,Auto Parts:O.E.M.
-DBX,Dropbox Inc.,Technology,Computer Software: Prepackaged Software
+CYRX,CryoPort Inc.,Health Care,Biotechnology: Pharmaceutical Preparations
+DCTH,Delcath Systems Inc.,Health Care,Medical/Dental Instruments
 DE,Deere & Company,Industrials,Industrial Machinery/Components
 DEC,Diversified Energy Company,Unknown,Unknown
+DELL,Dell Technologies Inc. Class C Common Stock ,Technology,Computer Manufacturing
+DG,Dollar General Corporation,Consumer Discretionary,Department/Specialty Retail Stores
 DK,Delek US Holdings Inc.,Energy,Integrated oil Companies
 DRTS,Alpha Tau Medical Ltd.,Health Care,Medical/Dental Instruments
-ELV,Elevance Health Inc.,Health Care,Medical Specialities
+EL,Estee Lauder Companies Inc. (The),Consumer Discretionary,Package Goods/Cosmetics
 ETD,Ethan Allen Interiors Inc.,Consumer Discretionary,Home Furnishings
 EWTX,Edgewise Therapeutics Inc.,Health Care,Biotechnology: Pharmaceutical Preparations
 EZPW,EZCORP Inc. Class A Non Voting,Consumer Discretionary,Other Specialty Stores
+FA,First Advantage Corporation,Technology,EDP Services
 FANG,Diamondback Energy Inc.,Energy,Oil & Gas Production
 FIVE,Five Below Inc.,Consumer Discretionary,Department/Specialty Retail Stores
+FOX,Fox Corporation,Industrials,Broadcasting
 FOXA,Fox Corporation,Industrials,Broadcasting
+FRNM,Freenome Inc. Common stock,Health Care,Medical Specialities
+FROG,JFrog Ltd.,Technology,Computer Software: Prepackaged Software
+FRSH,Freshworks Inc.,Technology,Computer Software: Prepackaged Software
+FSLY,Fastly Inc.,Technology,Computer Software: Prepackaged Software
+FTNT,Fortinet Inc.,Technology,Computer peripheral equipment
 GCT,GigaCloud Technology Inc Class A,Consumer Discretionary,Catalog/Specialty Distribution
-GEN,Gen Digital Inc.,Technology,Computer Software: Prepackaged Software
-GEO,Geo Group Inc (The) REIT,Consumer Discretionary,Homebuilding
+GH,Guardant Health Inc.,Health Care,Medical Specialities
 GOLD,Gold.com Inc.,Industrials,Other Specialty Stores
+GPN,Global Payments Inc.,Consumer Discretionary,Business Services
 GRNT,Granite Ridge Resources Inc.,Energy,Oil & Gas Production
-HAL,Halliburton Company,Energy,Oilfield Services/Equipment
-HIMX,Himax Technologies Inc. American Depositary Shares,Technology,Semiconductors
 HNST,The Honest Company Inc.,Consumer Discretionary,Catalog/Specialty Distribution
 HOG,Harley-Davidson Inc.,Consumer Discretionary,Motor Vehicles
-HP,Helmerich & Payne Inc.,Energy,Oil & Gas Production
 HPE,Hewlett Packard Enterprise Company,Technology,Retail: Computer Software & Peripheral Equipment
 HRMY,Harmony Biosciences Holdings Inc.,Health Care,Biotechnology: Pharmaceutical Preparations
 HUM,Humana Inc.,Health Care,Medical Specialities
-INVX,Innovex International Inc.,Consumer Discretionary,Oil and Gas Field Machinery
-IVZ,Invesco Ltd,Finance,Investment Managers
-KEYS,Keysight Technologies Inc.,Industrials,Industrial Machinery/Components
-KODK,Eastman Kodak Company Common New,Consumer Discretionary,Industrial Machinery/Components
-LFST,LifeStance Health Group Inc.,Health Care,Medical/Nursing Services
+IBRX,ImmunityBio Inc.,Health Care,Biotechnology: Biological Products (No Diagnostic Substances)
+JKHY,Jack Henry & Associates Inc.,Technology,EDP Services
+KSPI,Joint Stock Company Kaspi.kz American Depository Shares,Unknown,Unknown
 LILA,Liberty Latin America Ltd.,Telecommunications,Cable & Other Pay Television Services
 LILAK,Liberty Latin America Ltd.,Telecommunications,Cable & Other Pay Television Services
-LITE,Lumentum Holdings Inc.,Telecommunications,Telecommunications Equipment
-LXU,LSB Industries Inc.,Basic Materials,Major Chemicals
+MANH,Manhattan Associates Inc.,Technology,Computer Software: Prepackaged Software
 MD,Pediatrix Medical Group Inc.,Health Care,Hospital/Nursing Management
 MEOH,Methanex Corporation,Industrials,Major Chemicals
 MGNI,Magnite Inc.,Technology,Computer Software: Programming Data Processing
-MRVL,Marvell Technology Inc.,Technology,Semiconductors
-MRX,Marex Group Limited,Finance,Investment Bankers/Brokers/Service
 MTCH,Match Group Inc.,Technology,Computer Software: Programming Data Processing
-MU,Micron Technology Inc.,Technology,Semiconductors
-NBIS,Nebius Group N.V. Class A,Technology,Computer Software: Programming Data Processing
 NEO,NeoGenomics Inc.,Health Care,Precision Instruments
 NEOG,Neogen Corporation,Health Care,Biotechnology: In Vitro & In Vivo Diagnostic Substances
 NEXT,NextDecade Corporation,Utilities,Oil & Gas Production
-NTAP,NetApp Inc.,Technology,Electronic Components
-NTRA,Natera Inc.,Health Care,Medical Specialities
+NSP,Insperity Inc.,Consumer Discretionary,Professional Services
+NTNX,Nutanix Inc.,Technology,Computer Software: Prepackaged Software
 NUAI,New Era Energy & Digital Inc.,Energy,Oil & Gas Production
-NUE,Nucor Corporation,Industrials,Steel/Iron Ore
 NVAX,Novavax Inc.,Health Care,Biotechnology: Biological Products (No Diagnostic Substances)
-OII,Oceaneering International Inc.,Energy,Oilfield Services/Equipment
-OKTA,Okta Inc.,Technology,Computer Software: Prepackaged Software
+PANW,Palo Alto Networks Inc.,Technology,Computer peripheral equipment
 PARR,Par Pacific Holdings Inc.,Energy,Oil & Gas Production
+PAY,Paymentus Holdings Inc.,Consumer Discretionary,Business Services
 PAYS,Paysign Inc.,Technology,EDP Services
 PHVS,Pharvaris N.V.,Health Care,Biotechnology: Pharmaceutical Preparations
 PRDO,Perdoceo Education Corporation,Real Estate,Other Consumer Services
+PRGS,Progress Software Corporation Common Stock (DE),Technology,Computer Software: Prepackaged Software
 PSNL,Personalis Inc.,Health Care,Medical Specialities
+PTEN,Patterson-UTI Energy Inc.,Energy,Oil & Gas Production
 PTGX,Protagonist Therapeutics Inc.,Health Care,Biotechnology: Pharmaceutical Preparations
 PUBM,PubMatic Inc.,Technology,Computer Software: Programming Data Processing
-RES,RPC Inc.,Energy,Oilfield Services/Equipment
+QLYS,Qualys Inc.,Technology,Computer Software: Prepackaged Software
 RIOT,Riot Platforms Inc. Common Stock ,Finance,Finance: Consumer Services
 ROIV,Roivant Sciences Ltd. Common Shares,Health Care,Biotechnology: Pharmaceutical Preparations
 RVTY,Revvity Inc.,Industrials,Biotechnology: Laboratory Analytical Instruments
-SANM,Sanmina Corporation,Technology,Electrical Products
 SBLK,Star Bulk Carriers Corp. Common Shares,Consumer Discretionary,Marine Transportation
+SDGR,Schrodinger Inc.,Health Care,Biotechnology: Pharmaceutical Preparations
 SEI,Solaris Energy Infrastructure Inc.,Consumer Discretionary,Oil and Gas Field Machinery
 SG,Sweetgreen Inc.,Consumer Discretionary,Restaurants
-SLB,SLB Limited Common Shares,Energy,Oilfield Services/Equipment
-SNDK,Sandisk Corporation,Technology,Electronic Components
-SPT,Sprout Social Inc,Technology,Computer Software: Prepackaged Software
+SMTC,Semtech Corporation,Technology,Semiconductors
 SRPT,Sarepta Therapeutics Inc. Common Stock (DE),Health Care,Biotechnology: Pharmaceutical Preparations
-SSRM,SSR Mining Inc.,Industrials,Precious Metals
+STGW,Stagwell Inc.,Consumer Discretionary,Advertising
 STLN,Starling Oncology Inc.,Health Care,Medical/Nursing Services
-SXC,SunCoke Energy Inc.,Industrials,Steel/Iron Ore
-TARS,Tarsus Pharmaceuticals Inc.,Health Care,Biotechnology: Biological Products (No Diagnostic Substances)
-TDW,Tidewater Inc.,Consumer Discretionary,Marine Transportation
-TER,Teradyne Inc.,Industrials,Electrical Products
+SWKS,Skyworks Solutions Inc.,Technology,Semiconductors
+TALO,Talos Energy Inc.,Energy,Oil & Gas Production
+TGT,Target Corporation,Consumer Discretionary,Department/Specialty Retail Stores
 TH,Target Hospitality Corp.,Consumer Discretionary,Hotels/Resorts
-TPC,Tutor Perini Corporation,Consumer Discretionary,General Bldg Contractors - Nonresidential Bldgs
 TVTX,Travere Therapeutics Inc.,Health Care,Biotechnology: Pharmaceutical Preparations
-URBN,Urban Outfitters Inc.,Consumer Discretionary,Clothing/Shoe/Accessory Stores
+TWST,Twist Bioscience Corporation,Health Care,Biotechnology: Biological Products (No Diagnostic Substances)
 VIR,Vir Biotechnology Inc.,Health Care,Biotechnology: Biological Products (No Diagnostic Substances)
 VRNS,Varonis Systems Inc.,Technology,Computer Software: Prepackaged Software
 WAT,Waters Corporation,Industrials,Biotechnology: Laboratory Analytical Instruments
-WHD,Cactus Inc.,Consumer Discretionary,Oil and Gas Field Machinery
-WT,WisdomTree Inc.,Finance,Investment Bankers/Brokers/Service
-WTTR,Select Water Solutions Inc. Class A common stock,Energy,Oilfield Services/Equipment
-WWW,Wolverine World Wide Inc.,Consumer Discretionary,Shoe Manufacturing
+XP,XP Inc.,Finance,Investment Bankers/Brokers/Service
+ZBRA,Zebra Technologies Corporation,Industrials,Industrial Machinery/Components
 ZVRA,Zevra Therapeutics Inc.,Health Care,Biotechnology: Pharmaceutical Preparations
