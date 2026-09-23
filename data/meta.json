@@ -1,10 +1,10 @@
 {
-  "last_run_utc": "2026-09-22 01:10",
-  "last_date": "2026-09-21",
+  "last_run_utc": "2026-09-23 00:59",
+  "last_date": "2026-09-22",
   "tickers_requested": 4440,
   "tickers_loaded": 4440,
   "tickers_failed": 0,
-  "scan_hits": 114,
+  "scan_hits": 129,
   "scan_config": {
     "min_price": 5,
     "min_market_cap": 300000000,
