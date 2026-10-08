@@ -1,7 +1,8 @@
 Ticker,Name,Sector,Industry
 A,Agilent Technologies Inc.,Industrials,Biotechnology: Laboratory Analytical Instruments
-ABCL,AbCellera Biologics Inc. Common Shares,Health Care,Biotechnology: Pharmaceutical Preparations
-ABSI,Absci Corporation,Health Care,Biotechnology: Commercial Physical & Biological Resarch
+ADI,Analog Devices Inc.,Technology,Semiconductors
+ALAB,Astera Labs Inc.,Technology,Semiconductors
+ALVO,Alvotech,Health Care,Biotechnology: Biological Products (No Diagnostic Substances)
 AMAT,Applied Materials Inc.,Technology,Semiconductors
 AMN,AMN Healthcare Services Inc,Consumer Discretionary,Professional Services
 AMPL,Amplitude Inc.,Technology,Computer Software: Prepackaged Software
@@ -13,58 +14,59 @@ ARM,Arm Holdings plc American Depositary Shares,Technology,Semiconductors
 ASML,ASML Holding N.V. New York Registry Shares,Technology,Industrial Machinery/Components
 ASPN,Aspen Aerogels Inc.,Consumer Discretionary,RETAIL: Building Materials
 ATEN,A10 Networks Inc.,Telecommunications,Computer Communications Equipment
-AUGO,Aura Minerals Inc. Common Shares,Basic Materials,Metal Mining
 AVPT,AvePoint Inc.,Technology,Computer Software: Prepackaged Software
 AVT,Avnet Inc.,Technology,Electronic Components
 AXTI,AXT Inc,Technology,Semiconductors
-BAND,Bandwidth Inc.,Technology,Computer Software: Prepackaged Software
 BE,Bloom Energy Corporation,Energy,Industrial Machinery/Components
-BFLY,Butterfly Network Inc.,Health Care,Medical Electronics
 BIIB,Biogen Inc.,Health Care,Biotechnology: Biological Products (No Diagnostic Substances)
-BLFS,BioLife Solutions Inc.,Health Care,Biotechnology: Electromedical & Electrotherapeutic Apparatus
 BOX,Box Inc.,Technology,Computer Software: Prepackaged Software
-CAT,Caterpillar Inc.,Industrials,Construction/Ag Equipment/Trucks
-CECO,CECO Environmental Corp.,Industrials,Pollution Control Equipment
+CDNA,CareDx Inc.,Health Care,Medical Specialities
 CEVA,CEVA Inc.,Technology,Computer Software: Programming Data Processing
+CIEN,Ciena Corporation,Utilities,Telecommunications Equipment
 CLMT,Calumet Inc.,Energy,Integrated oil Companies
 COHR,Coherent Corp.,Technology,Electronic Components
-COKE,Coca-Cola Consolidated Inc.,Consumer Staples,Beverages (Production/Distribution)
 CON,Concentra Group Holdings Parent Inc.,Health Care,Medical Specialities
 CORT,Corcept Therapeutics Incorporated,Health Care,Biotechnology: Pharmaceutical Preparations
 CRCT,Cricut Inc.,Technology,Industrial Machinery/Components
 CRGY,Crescent Energy Company,Energy,Oil & Gas Production
 CRL,Charles River Laboratories International Inc.,Health Care,Biotechnology: Commercial Physical & Biological Resarch
 CRSR,Corsair Gaming Inc.,Technology,Computer peripheral equipment
+CTVA,Corteva Inc. Common Stock ,Consumer Staples,Farming/Seeds/Milling
 CVLT,Commvault Systems Inc.,Technology,Computer Software: Prepackaged Software
 CYRX,CryoPort Inc.,Health Care,Biotechnology: Pharmaceutical Preparations
 DDOG,Datadog Inc.,Technology,Computer Software: Prepackaged Software
-DE,Deere & Company,Industrials,Industrial Machinery/Components
 DELL,Dell Technologies Inc. Class C Common Stock ,Technology,Computer Manufacturing
 DIOD,Diodes Incorporated,Technology,Semiconductors
 DK,Delek US Holdings Inc.,Energy,Integrated oil Companies
-DNOW,DNOW Inc.,Consumer Discretionary,Oil and Gas Field Machinery
+DNA,Ginkgo Bioworks Holdings Inc.,Health Care,Biotechnology: Biological Products (No Diagnostic Substances)
 DVN,Devon Energy Corporation,Energy,Oil & Gas Production
+EBAY,eBay Inc.,Consumer Discretionary,Business Services
 ENR,Energizer Holdings Inc.,Miscellaneous,Industrial Machinery/Components
+ENTG,Entegris Inc.,Industrials,Plastic Products
 ETN,Eaton Corporation PLC,Technology,Industrial Machinery/Components
 EXEL,Exelixis Inc.,Health Care,Biotechnology: Biological Products (No Diagnostic Substances)
 FCX,Freeport-McMoRan Inc.,Basic Materials,Metal Mining
 FIGS,FIGS Inc.,Consumer Discretionary,Apparel
+FORM,FormFactor Inc. FormFactor Inc.,Technology,Semiconductors
 FRNM,Freenome Inc. Common stock,Health Care,Medical Specialities
 FROG,JFrog Ltd.,Technology,Computer Software: Prepackaged Software
+FRSH,Freshworks Inc.,Technology,Computer Software: Prepackaged Software
 FSLY,Fastly Inc.,Technology,Computer Software: Prepackaged Software
-FTK,Flotek Industries Inc.,Industrials,Major Chemicals
 FTRE,Fortrea Holdings Inc.,Health Care,Medical Specialities
 GCT,GigaCloud Technology Inc Class A,Consumer Discretionary,Catalog/Specialty Distribution
+GEV,GE Vernova Inc.,Technology,Consumer Electronics/Appliances
 GLW,Corning Incorporated,Industrials,Telecommunications Equipment
+GMAB,Genmab A/S ADS,Health Care,Biotechnology: Pharmaceutical Preparations
 GNK,Genco Shipping & Trading Limited Ordinary Shares New (Marshall Islands),Consumer Discretionary,Marine Transportation
 GNRC,Generac Holdlings Inc.,Consumer Discretionary,Metal Fabrications
 GO,Grocery Outlet Holding Corp.,Consumer Staples,Food Chains
 HALO,Halozyme Therapeutics Inc.,Health Care,Biotechnology: Biological Products (No Diagnostic Substances)
-HIMX,Himax Technologies Inc. American Depositary Shares,Technology,Semiconductors
+HPQ,HP Inc.,Technology,Computer Manufacturing
 HTFL,Heartflow Inc.,Health Care,Medical/Dental Instruments
 HUM,Humana Inc.,Health Care,Medical Specialities
 IBRX,ImmunityBio Inc.,Health Care,Biotechnology: Biological Products (No Diagnostic Substances)
-INOD,Innodata Inc.,Technology,EDP Services
+ILMN,Illumina Inc.,Health Care,Medical Specialities
+INTC,Intel Corporation,Technology,Semiconductors
 KLAC,KLA Corporation,Technology,Electronic Components
 KLIC,Kulicke and Soffa Industries Inc.,Technology,Semiconductors
 KN,Knowles Corporation,Consumer Staples,Consumer Electronics/Appliances
@@ -72,24 +74,21 @@ KODK,Eastman Kodak Company Common New,Consumer Discretionary,Industrial Machiner
 LAND,Gladstone Land Corporation,Real Estate,Real Estate Investment Trusts
 LAUR,Laureate Education Inc.,Real Estate,Other Consumer Services
 LILAK,Liberty Latin America Ltd.,Telecommunications,Cable & Other Pay Television Services
+LIND,Lindblad Expeditions Holdings Inc.,Consumer Discretionary,Transportation Services
 LPG,Dorian LPG Ltd.,Consumer Discretionary,Marine Transportation
 LRCX,Lam Research Corporation,Technology,Industrial Machinery/Components
 LSCC,Lattice Semiconductor Corporation,Technology,Semiconductors
-MCHP,Microchip Technology Incorporated,Technology,Semiconductors
 MCK,McKesson Corporation,Health Care,Other Pharmaceuticals
 MEOH,Methanex Corporation,Industrials,Major Chemicals
 MGNI,Magnite Inc.,Technology,Computer Software: Programming Data Processing
 MPWR,Monolithic Power Systems Inc.,Technology,Semiconductors
-MRAM,Everspin Technologies Inc.,Technology,Semiconductors
-MRVI,Maravai LifeSciences Holdings Inc.,Health Care,Biotechnology: Pharmaceutical Preparations
-MRX,Marex Group Limited,Finance,Investment Bankers/Brokers/Service
+MTCH,Match Group Inc.,Technology,Computer Software: Programming Data Processing
 MU,Micron Technology Inc.,Technology,Semiconductors
 NBIS,Nebius Group N.V. Class A,Technology,Computer Software: Programming Data Processing
 NICE,NICE Ltd American Depositary Shares,Technology,Computer Software: Prepackaged Software
 NTCT,NetScout Systems Inc.,Technology,EDP Services
 NTNX,Nutanix Inc.,Technology,Computer Software: Prepackaged Software
 NVAX,Novavax Inc.,Health Care,Biotechnology: Biological Products (No Diagnostic Substances)
-NXPI,NXP Semiconductors N.V.,Technology,Semiconductors
 ON,ON Semiconductor Corporation,Technology,Semiconductors
 OPRT,Oportun Financial Corporation,Finance,Finance: Consumer Services
 OUST,Ouster Inc.,Industrials,Industrial Machinery/Components
@@ -99,25 +98,22 @@ PAYS,Paysign Inc.,Technology,EDP Services
 PCVX,Vaxcyte Inc.,Health Care,Biotechnology: Biological Products (No Diagnostic Substances)
 PDFS,PDF Solutions Inc.,Technology,Computer Software: Prepackaged Software
 PEB,Pebblebrook Hotel Trust Common Shares of Beneficial Interest,Real Estate,Real Estate Investment Trusts
-PENG,Penguin Solutions Inc.,Technology,Semiconductors
 PK,Park Hotels & Resorts Inc. Common Stock ,Consumer Discretionary,Hotels/Resorts
 PLTR,Palantir Technologies Inc.,Technology,Computer Software: Prepackaged Software
+PPLI,People Incorporated,Technology,Computer Software: Programming Data Processing
 PRCH,Porch Group Inc.,Technology,Computer Software: Prepackaged Software
+PRGO,Perrigo Company plc,Health Care,Biotechnology: Pharmaceutical Preparations
 PSX,Phillips 66,Energy,Integrated oil Companies
 PUBM,PubMatic Inc.,Technology,Computer Software: Programming Data Processing
 PWR,Quanta Services Inc.,Industrials,Engineering & Construction
 QLYS,Qualys Inc.,Technology,Computer Software: Prepackaged Software
+RMBS,Rambus Inc.,Technology,Semiconductors
 SANM,Sanmina Corporation,Technology,Electrical Products
-SATL,Satellogic Inc.,Technology,Radio And Television Broadcasting And Communications Equipment
-SENS,Senseonics Holdings Inc.,Health Care,Medical/Dental Instruments
+SBH,Sally Beauty Holdings Inc. (Name to be changed from Sally Holdings Inc.),Consumer Discretionary,Other Specialty Stores
 SIMO,Silicon Motion Technology Corporation American Depositary Shares,Technology,Semiconductors
 SLDE,Slide Insurance Holdings Inc.,Finance,Property-Casualty Insurers
-SMCI,Super Micro Computer Inc.,Technology,Computer Manufacturing
-SRZN,Surrozen Inc.,Health Care,Biotechnology: Biological Products (No Diagnostic Substances)
-STLN,Starling Oncology Inc.,Health Care,Medical/Nursing Services
 SWBI,Smith & Wesson Brands Inc.,Industrials,Ordnance And Accessories
 SXC,SunCoke Energy Inc.,Industrials,Steel/Iron Ore
-TALO,Talos Energy Inc.,Energy,Oil & Gas Production
 TEAM,Atlassian Corporation,Technology,Computer Software: Prepackaged Software
 TENB,Tenable Holdings Inc.,Technology,Computer Software: Prepackaged Software
 TER,Teradyne Inc.,Industrials,Electrical Products
@@ -126,11 +122,12 @@ TRGP,Targa Resources Inc.,Utilities,Natural Gas Distribution
 TSEM,Tower Semiconductor Ltd.,Technology,Semiconductors
 TTMI,TTM Technologies Inc.,Technology,Electrical Products
 TXN,Texas Instruments Incorporated,Technology,Semiconductors
-URBN,Urban Outfitters Inc.,Consumer Discretionary,Clothing/Shoe/Accessory Stores
 UTHR,United Therapeutics Corporation,Health Care,Biotechnology: Pharmaceutical Preparations
 VCTR,Victory Capital Holdings Inc.,Finance,Investment Managers
 VECO,Veeco Instruments Inc.,Technology,Industrial Machinery/Components
 VEEV,Veeva Systems Inc.,Technology,Computer Software: Prepackaged Software
+VIAV,Viavi Solutions Inc.,Technology,Semiconductors
+VICR,Vicor Corporation,Technology,Industrial Machinery/Components
 VIR,Vir Biotechnology Inc.,Health Care,Biotechnology: Biological Products (No Diagnostic Substances)
 VPG,Vishay Precision Group Inc.,Technology,Electrical Products
 VRNS,Varonis Systems Inc.,Technology,Computer Software: Prepackaged Software
@@ -139,8 +136,6 @@ VTRS,Viatris Inc.,Health Care,Biotechnology: Pharmaceutical Preparations
 WAT,Waters Corporation,Industrials,Biotechnology: Laboratory Analytical Instruments
 WNC,Wabash National Corporation,Industrials,Construction/Ag Equipment/Trucks
 WOLF,Wolfspeed Inc. Common Stock New,Technology,Semiconductors
-WRBY,Warby Parker Inc.,Health Care,Ophthalmic Goods
-WT,WisdomTree Inc.,Finance,Investment Bankers/Brokers/Service
 XERS,Xeris Biopharma Holdings Inc.,Health Care,Biotechnology: Pharmaceutical Preparations
+XMTR,Xometry Inc.,Consumer Discretionary,Business Services
 ZBRA,Zebra Technologies Corporation,Industrials,Industrial Machinery/Components
-ZLAB,Zai Lab Limited American Depositary Shares,Health Care,Biotechnology: Pharmaceutical Preparations
