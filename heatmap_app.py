@@ -146,19 +146,24 @@ RS_UNIVERSE_FILE = os.path.join(BASE, "rs_universe.csv")
 RS_TTL = 12 * 3600      # RS/Breadth 12 h zwischenspeichern
 
 
-def bulk_download(tickers: list, period: str, chunk: int = 60) -> dict:
+def bulk_download(tickers: list, period: str, chunk: int = 60,
+                  auto_adjust: bool = True) -> dict:
     """Grosse Universen in Bloecken laden, ohne yfinance-Threading.
 
     yfinance startet mit threads=True einen Thread je Ticker – bei 500+
     Titeln laeuft die Streamlit-Cloud-Instanz ins Thread-Limit
     (RuntimeError: can't start new thread). Sequenzielle Bloecke von 60
     Tickern sind etwas langsamer, aber stabil.
+
+    auto_adjust=False liefert unbereinigte Kurse – noetig, wenn Werte gegen
+    das 52-Wochen-Hoch gerechnet werden: bereinigte Altkurse liegen nach
+    Dividenden tiefer, der Kurs kann sonst scheinbar ueber dem Hoch stehen.
     """
     parts = {}
     for i in range(0, len(tickers), chunk):
         sub = tickers[i:i + chunk]
         try:
-            raw = yf.download(sub, period=period, auto_adjust=True,
+            raw = yf.download(sub, period=period, auto_adjust=auto_adjust,
                               progress=False, group_by="column",
                               threads=False)
         except Exception:
@@ -1110,8 +1115,12 @@ def load_data_meta() -> dict:
     path = os.path.join(DATA_DIR, "meta.json")
     if not os.path.exists(path):
         return {}
-    with open(path, encoding="utf-8") as f:
-        return _json.load(f)
+    try:
+        # utf-8-sig: auch Dateien mit BOM (z.B. unter Windows gespeichert)
+        with open(path, encoding="utf-8-sig") as f:
+            return _json.load(f)
+    except ValueError:
+        return {}
 
 
 def breadth_derived(df: pd.DataFrame, freq: str) -> pd.DataFrame:
@@ -1388,7 +1397,7 @@ def load_scanner_config() -> dict:
     import json as _json
     if not os.path.exists(SCANNER_CONFIG):
         return {}
-    with open(SCANNER_CONFIG, encoding="utf-8") as f:
+    with open(SCANNER_CONFIG, encoding="utf-8-sig") as f:
         return {k: v for k, v in _json.load(f).items() if not k.startswith("_")}
 
 
@@ -1698,89 +1707,418 @@ with tab_idx:
                 f"Konstituenten via Wikipedia-Listen (idx_*.csv, editierbar)."
             )
 
-# ----- Tab 6: Theme Tracker -----
-TT_WINDOWS = {"1D": 1, "1W": 5, "1M": 21, "3M": 63, "YTD": None}
+# ----- Tab: Theme Tracker (Gruppen aus themes.csv, Logik des Excel-Trackers) -----
+THEMES_FILE = os.path.join(BASE, "themes.csv")
+TT_PERF = {"1D": 1, "1W": 5, "2W": 10, "4W": 21,
+           "3M": 63, "6M": 126, "12M": 252}
+QUAD_ORDER = ["Leading", "Improving", "Weakening", "Lagging", "keine Daten"]
+QUAD_COLOR = {"Leading": MINT, "Improving": "#7aa2ff", "Weakening": "#ffd166",
+              "Lagging": "#ff5fa2", "keine Daten": "#8a93b8"}
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def load_themes() -> pd.DataFrame:
+    """themes.csv: Theme, Role (member/benchmark), Ticker, Name, Benchmark."""
+    if not os.path.exists(THEMES_FILE):
+        return pd.DataFrame()
+    df = pd.read_csv(THEMES_FILE, keep_default_na=False, na_values=[""],
+                     dtype=str)
+    df["Ticker"] = df["Ticker"].fillna("").str.upper().str.strip()
+    df["Role"] = df["Role"].fillna("member").str.strip().str.lower()
+    df["Name"] = df["Name"].fillna(df["Ticker"])
+    df["Benchmark"] = df["Benchmark"].fillna("").str.upper().str.strip()
+    return df[df["Ticker"] != ""].reset_index(drop=True)
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_theme_ohlcv(tickers: tuple) -> dict:
+    """Ein Download fuer alle Theme-Ticker (2 Jahre fuer 12M-Performance).
+
+    Unbereinigt wie im Excel-Tracker – die SMA- und 52-Wochen-Werte stimmen
+    damit auf die Nachkommastelle mit der Tabelle ueberein.
+    """
+    return bulk_download(list(tickers), "2y", auto_adjust=False)
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def theme_metrics(tickers: tuple, atr_period: int = 14) -> pd.DataFrame:
+    """Kennzahlen je Ticker, Stand letzter Handelstag.
+
+    Formeln wie im Excel-Tracker (dort gegengerechnet): SMA20/50/200,
+    ATR = Wilder ueber `atr_period` Tage, % vom 52-Wochen-Hoch gegen das
+    hoechste High der letzten 252 Tage, ATR-Extension vom SMA50 in % und in
+    ATR-Vielfachen. EMA10 = Standard-EMA (span 10); die Excel-Spalte weicht
+    je nach Titel um bis zu 1,5 % ab (andere Datenquelle).
+    """
+    d = fetch_theme_ohlcv(tickers)
+    C = d.get("Close")
+    if C is None or C.empty:
+        return pd.DataFrame()
+    H = d.get("High", C)
+    L = d.get("Low", C)
+    V = d.get("Volume")
+    out = {}
+    for t in C.columns:
+        c = C[t].dropna()
+        if len(c) < 25:
+            continue
+        h, l = H[t].reindex(c.index), L[t].reindex(c.index)
+        tr = pd.concat([h - l, (h - c.shift()).abs(),
+                        (l - c.shift()).abs()], axis=1).max(axis=1)
+        atr_s = tr.ewm(alpha=1 / atr_period, adjust=False).mean()
+        atr, last = atr_s.iloc[-1], c.iloc[-1]
+        ma = {"EMA10": c.ewm(span=10, adjust=False).mean().iloc[-1]}
+        for n, key in ((20, "SMA20"), (50, "SMA50"), (200, "SMA200")):
+            ma[key] = c.rolling(n).mean().iloc[-1] if len(c) >= n else np.nan
+        sma50 = ma["SMA50"]
+
+        r = {"Kurs": last, **ma, "ATR$": atr, "ATR%": atr / last * 100}
+        for lbl, n in TT_PERF.items():
+            r[lbl] = (last / c.iloc[-(n + 1)] - 1) * 100 if len(c) > n else np.nan
+        hi52 = h.iloc[-252:].max()
+        r["52W%"] = (last / hi52 - 1) * 100 if hi52 and hi52 > 0 else np.nan
+        r["ATRext%"] = (last / sma50 - 1) * 100 if sma50 and sma50 > 0 else np.nan
+        r["ATRextX"] = (last - sma50) / atr if atr and atr > 0 else np.nan
+        r["ATRchg%"] = ((atr / atr_s.iloc[-21] - 1) * 100
+                        if len(atr_s) > 21 and atr_s.iloc[-21] else np.nan)
+        r["Entry1"] = sma50 + 3 * atr if pd.notna(sma50) else np.nan
+        r["Entry2"] = sma50 + 4 * atr if pd.notna(sma50) else np.nan
+        if V is not None and t in V.columns:
+            r["DVol"] = (c * V[t].reindex(c.index)).iloc[-63:].mean() / 1e6
+        else:
+            r["DVol"] = np.nan
+        r["Trend"] = int(sum(bool(last > ma[k]) for k in
+                             ("EMA10", "SMA20", "SMA50", "SMA200")
+                             if pd.notna(ma[k])))
+        out[t] = r
+    # astype(float): nach dem Transponieren waeren die Spalten object-dtype,
+    # dann greift na_rep in der Tabellen-Formatierung nicht ("None" statt "–").
+    df = pd.DataFrame(out).T.astype(float)
+    df.index.name = "Ticker"
+    return df
+
+
+def atr_light(x: float, go_from: float, go_to: float, no_entry_to: float) -> str:
+    """Entry-Ampel aus der ATR-Extension zum SMA50 (Excel-Parameterblock)."""
+    if pd.isna(x):
+        return "–"
+    if x < 0:
+        return "unter MA50"
+    if x < go_from:
+        return "Aufbau"
+    if x <= go_to:
+        return "GO"
+    if x <= no_entry_to:
+        return "kein Entry"
+    return "extended"
+
+
+def zone_52w(v: float, pivot: float, leader: float, damaged: float) -> str:
+    if pd.isna(v):
+        return "–"
+    if v >= pivot:
+        return "Pivot-Zone"
+    if v >= leader:
+        return "Leader"
+    if v >= damaged:
+        return "Mittelfeld"
+    return "Angeschlagen"
+
+
+def momentum_quadrant(met: pd.DataFrame, members: list,
+                      bench: str) -> pd.DataFrame:
+    """RRG-Quadranten gegen den Gruppen-Benchmark.
+
+    Rel = Performance Titel minus Performance Benchmark (Prozentpunkte).
+    Langfrist = Mittel aus Rel 6M und Rel 12M, sonst Rel 3M.
+    Kurzfrist = Rel 4W. Leading = beides > 0, Weakening = nur Langfrist,
+    Improving = nur Kurzfrist, Lagging = keines von beiden.
+    """
+    rows = [t for t in dict.fromkeys(members) if t in met.index]
+    if bench not in met.index or not rows:
+        return pd.DataFrame()
+    b = met.loc[bench]
+    rel = pd.DataFrame({f"Rel {w}": met.loc[rows, w] - b[w]
+                        for w in ("4W", "3M", "6M", "12M")})
+    rel["Langfrist"] = (rel[["Rel 6M", "Rel 12M"]].mean(axis=1)
+                        .fillna(rel["Rel 3M"]))
+    rel["Kurzfrist"] = rel["Rel 4W"]
+    ok = rel["Langfrist"].notna() & rel["Kurzfrist"].notna()
+    lf, kf = rel["Langfrist"] > 0, rel["Kurzfrist"] > 0
+    rel["Quadrant"] = np.select(
+        [~ok, lf & kf, lf & ~kf, ~lf & kf],
+        ["keine Daten", "Leading", "Weakening", "Improving"],
+        default="Lagging")
+    rel["_o"] = rel["Quadrant"].map({q: i for i, q in enumerate(QUAD_ORDER)})
+    rel = rel.sort_values(["_o", "Langfrist"], ascending=[True, False])
+    rel.insert(0, "Rang", range(1, len(rel) + 1))
+    return rel.drop(columns="_o")
+
+
+def render_rrg(rel: pd.DataFrame, bench: str, group: str) -> None:
+    """RRG-Streudiagramm: Langfrist (x) gegen Kurzfrist (y)."""
+    import plotly.graph_objects as go
+
+    d = rel[rel["Quadrant"] != "keine Daten"]
+    if d.empty:
+        return
+    xr = max(abs(d["Langfrist"]).max(), 1.0) * 1.25
+    yr = max(abs(d["Kurzfrist"]).max(), 1.0) * 1.25
+    fig = go.Figure()
+    for x0, x1, y0, y1, col in ((0, xr, 0, yr, MINT), (-xr, 0, 0, yr, "#7aa2ff"),
+                                (0, xr, -yr, 0, "#ffd166"),
+                                (-xr, 0, -yr, 0, "#ff5fa2")):
+        fig.add_shape(type="rect", x0=x0, x1=x1, y0=y0, y1=y1, layer="below",
+                      fillcolor=col, opacity=0.07, line_width=0)
+    for q, ax, ay in (("Leading", xr, yr), ("Improving", -xr, yr),
+                      ("Weakening", xr, -yr), ("Lagging", -xr, -yr)):
+        fig.add_annotation(x=ax * 0.97, y=ay * 0.95, text=q, showarrow=False,
+                           xanchor="right" if ax > 0 else "left",
+                           font=dict(color=QUAD_COLOR[q], size=12))
+    fig.add_trace(go.Scatter(
+        x=d["Langfrist"], y=d["Kurzfrist"], mode="markers+text",
+        text=d.index, textposition="top center",
+        textfont=dict(color="#fff", size=11),
+        marker=dict(size=13, color=[QUAD_COLOR[q] for q in d["Quadrant"]],
+                    line=dict(color=NAVY_BG, width=1.5)),
+        customdata=np.stack([d["Rel 4W"], d["Rel 3M"], d["Rel 6M"],
+                             d["Rel 12M"]], axis=-1),
+        hovertemplate=("<b>%{text}</b><br>Langfrist %{x:+.1f} Pp · "
+                       "Kurzfrist %{y:+.1f} Pp<br>"
+                       "Rel 4W %{customdata[0]:+.1f} · "
+                       "Rel 3M %{customdata[1]:+.1f}<br>"
+                       "Rel 6M %{customdata[2]:+.1f} · "
+                       "Rel 12M %{customdata[3]:+.1f}<extra></extra>"),
+        showlegend=False))
+    fig.add_hline(y=0, line=dict(color="#4a5a8a", width=1))
+    fig.add_vline(x=0, line=dict(color="#4a5a8a", width=1))
+    fig.update_layout(
+        title=dict(text=f"{group} · Momentum-Quadrant relativ zu {bench}",
+                   font=dict(size=15, color="#fff")),
+        height=470, margin=dict(t=45, l=0, r=0, b=0),
+        paper_bgcolor=NAVY_BG, plot_bgcolor=NAVY_BG, font=dict(color="#fff"),
+        xaxis=dict(title="Langfrist (Ø Rel 6M/12M, Prozentpunkte)",
+                   gridcolor="#243063", range=[-xr, xr], zeroline=False),
+        yaxis=dict(title="Kurzfrist (Rel 4W, Pp)", gridcolor="#243063",
+                   range=[-yr, yr], zeroline=False))
+    st.plotly_chart(fig, use_container_width=True, key="rrg_chart")
+
 
 with tab_themes:
-    ttf = st.radio("Zeitraum", list(TT_WINDOWS.keys()), horizontal=True,
-                   label_visibility="collapsed", key="tf_themes")
-    uni_t = load_csv(TICKER_FILE)
-    if uni_t.empty:
-        st.warning("Universum leer.")
+    themes = load_themes()
+    if themes.empty:
+        st.warning("themes.csv fehlt oder ist leer – Gruppen im Tab "
+                   "'Universum' pflegen.")
     else:
-        with st.spinner("Lade Themes..."):
-            closes_t = fetch_closes(tuple(uni_t["Ticker"]), period="1y")
+        groups = list(dict.fromkeys(themes["Theme"]))
+        tcol1, tcol2 = st.columns([2, 3])
+        with tcol1:
+            grp = st.selectbox("Gruppe", groups, key="tt_group",
+                               label_visibility="collapsed")
+        sub = themes[themes["Theme"] == grp]
+        bench = next((b for b in sub["Benchmark"] if b), "XLK")
+        n_member = int((sub["Role"] == "member").sum())
+        with tcol2:
+            st.caption(f"Benchmark: {bench} · {n_member} Titel · "
+                       "Quelle: Yahoo (~15 min)")
 
-        # % Change je Ticker fuer das gewaehlte Fenster
-        chg_t = {}
-        for col in closes_t.columns:
-            s = closes_t[col].dropna()
-            if s.empty:
-                continue
-            n = TT_WINDOWS[ttf]
-            if n is None:                     # YTD: letzter Close des Vorjahres
-                base = s[s.index.year < s.index[-1].year]
-                if base.empty:
-                    continue
-                chg_t[col] = (s.iloc[-1] / base.iloc[-1] - 1) * 100
-            elif len(s) > n:
-                chg_t[col] = (s.iloc[-1] / s.iloc[-(n + 1)] - 1) * 100
-        perf = pd.Series(chg_t, name="chg")
+        with st.expander("Parameter (Vorgaben aus dem Excel-Tracker)"):
+            p1 = st.columns(4)
+            atr_n = int(p1[0].number_input("ATR-Periode (Tage)", value=14,
+                                          min_value=5, max_value=50, step=1,
+                                          key="tt_atr_n"))
+            go_from = p1[1].number_input("Ampel GO ab (x ATR)", value=3.0,
+                                         step=0.5, key="tt_go_from")
+            go_to = p1[2].number_input("GO bis (x ATR)", value=4.99, step=0.5,
+                                       key="tt_go_to")
+            no_entry = p1[3].number_input("Kein Entry bis (x ATR)", value=7.0,
+                                          step=0.5, key="tt_no_entry")
+            p2 = st.columns(4)
+            z_pivot = p2[0].number_input("52W Pivot-Zone ab (%)", value=-5.0,
+                                         step=1.0, key="tt_pivot")
+            z_leader = p2[1].number_input("52W Leader ab (%)", value=-15.0,
+                                          step=1.0, key="tt_leader")
+            z_dam = p2[2].number_input("52W Angeschlagen ab (%)", value=-25.0,
+                                       step=1.0, key="tt_dam")
+            dark_red = p2[3].number_input("Perf. dunkelrot ab (%)", value=-3.0,
+                                          step=1.0, key="tt_darkred")
 
-        # Theme-Performance = Durchschnitt der zugehoerigen ETFs
-        dft = uni_t.merge(perf, left_on="Ticker", right_index=True)
-        theme_perf = (dft.groupby("Theme")["chg"].mean()
-                      .sort_values(ascending=True))   # ascending: Top oben im Chart
+        with st.spinner(f"Lade {len(set(sub['Ticker']) | {bench})} Titel..."):
+            met = theme_metrics(tuple(sorted(set(sub["Ticker"]) | {bench})),
+                                atr_n)
+        if met.empty:
+            st.error("Keine Kursdaten geladen.")
+        else:
+            PCT_T = ["1D %", "1W %", "2W %", "4W %", "3M %", "6M %", "12M %"]
+            MA_COLS = ["EMA10", "SMA20", "SMA50", "SMA200"]
+            FMT_T = {"Kurs": "{:,.2f}", "$-Vol Ø3M Mio": "{:,.0f}",
+                     "EMA10": "{:,.2f}", "SMA20": "{:,.2f}", "SMA50": "{:,.2f}",
+                     "SMA200": "{:,.2f}", "vom 52W-Hoch %": "{:+.1f}",
+                     "ATR %": "{:.2f}", "ATR $": "{:,.2f}",
+                     "ATR-Veränd. %": "{:+.1f}", "Ext. MA50 %": "{:+.2f}",
+                     "Ext. MA50 x": "{:+.2f}", "Entry 3x": "{:,.2f}",
+                     "Entry 4x": "{:,.2f}", "Trend": "{:.0f}",
+                     **{c: "{:+.2f}" for c in PCT_T}}
 
-        import plotly.graph_objects as go
-        colors = [MINT if v >= 0 else "#ff5fa2" for v in theme_perf.values]
-        figt = go.Figure(go.Bar(
-            x=theme_perf.values, y=theme_perf.index, orientation="h",
-            marker_color=colors,
-            text=[f"{v:+.2f} %" for v in theme_perf.values],
-            textposition="outside",
-            textfont=dict(color="#fff", size=12),
-        ))
-        pad = max(abs(theme_perf.min()), abs(theme_perf.max())) * 0.25 + 0.5
-        figt.update_layout(
-            title=dict(text=f"Theme Tracker · {ttf} · Durchschnitt der "
-                            "Theme-ETFs", font=dict(size=15, color="#fff")),
-            height=32 * len(theme_perf) + 90,
-            margin=dict(t=45, l=0, r=10, b=0),
-            paper_bgcolor=NAVY_BG, plot_bgcolor=NAVY_BG,
-            font=dict(color="#fff"),
-            xaxis=dict(gridcolor="#243063", zerolinecolor="#4a5a8a",
-                       range=[theme_perf.min() - pad, theme_perf.max() + pad],
-                       ticksuffix=" %"),
-            yaxis=dict(gridcolor="rgba(0,0,0,0)"),
-            showlegend=False, bargap=0.25,
-        )
-        st.caption("Tipp: Balken anklicken -> ETFs des Themes erscheinen darunter.")
-        evt = st.plotly_chart(figt, use_container_width=True, key="theme_bars",
-                              on_select="rerun", selection_mode="points")
-        try:
-            tpts = evt["selection"]["points"]
-        except (TypeError, KeyError):
-            tpts = []
-        if tpts:
-            sel_theme = tpts[0].get("y")
-            members = (dft[dft["Theme"] == sel_theme]
-                       [["Ticker", "Name", "chg"]]
-                       .sort_values("chg", ascending=False)
-                       .rename(columns={"chg": f"{ttf} %"}))
-            st.markdown(f"**{sel_theme}** – Einzel-ETFs ({ttf}):")
-            st.dataframe(
-                members.style
-                .map(lambda v: col_pct(v) if isinstance(v, float) else "",
-                     subset=[f"{ttf} %"])
-                .format({f"{ttf} %": "{:+.2f} %"}),
-                use_container_width=True, hide_index=True,
-            )
-        st.caption(
-            f"Stand: {closes_t.index[-1]:%Y-%m-%d} · Quelle: Yahoo (~15 min) · "
-            "Sortiert nach Performance. YTD = seit letztem Handelstag des "
-            "Vorjahres."
-        )
+            def build_theme_table(role: str) -> pd.DataFrame:
+                part = sub[sub["Role"] == role].drop_duplicates("Ticker")
+                idx = [t for t in part["Ticker"] if t in met.index]
+                if not idx:
+                    return pd.DataFrame()
+                m = met.loc[idx]
+                names = part.set_index("Ticker")["Name"].reindex(idx)
+                return pd.DataFrame({
+                    "Aktie": names.values, "Ticker": idx,
+                    "Kurs": m["Kurs"], "1D %": m["1D"], "1W %": m["1W"],
+                    "2W %": m["2W"], "4W %": m["4W"], "3M %": m["3M"],
+                    "6M %": m["6M"], "12M %": m["12M"],
+                    "$-Vol Ø3M Mio": m["DVol"], "Trend": m["Trend"],
+                    "EMA10": m["EMA10"], "SMA20": m["SMA20"],
+                    "SMA50": m["SMA50"], "SMA200": m["SMA200"],
+                    "vom 52W-Hoch %": m["52W%"],
+                    "52W-Zone": [zone_52w(v, z_pivot, z_leader, z_dam)
+                                 for v in m["52W%"]],
+                    "ATR %": m["ATR%"], "ATR $": m["ATR$"],
+                    "ATR-Veränd. %": m["ATRchg%"],
+                    "Ext. MA50 %": m["ATRext%"], "Ext. MA50 x": m["ATRextX"],
+                    "Entry 3x": m["Entry1"], "Entry 4x": m["Entry2"],
+                    "Ampel": [atr_light(x, go_from, go_to, no_entry)
+                              for x in m["ATRextX"]],
+                }).reset_index(drop=True)
+
+            def col_perf(v):
+                """Wie im Excel: ab Schwelle dunkelrot, sonst Verlauf rot/mint."""
+                if pd.isna(v):
+                    return ""
+                if v <= dark_red:
+                    return "background-color: rgba(150,30,30,0.9); color: #fff"
+                if v > 0.05:
+                    return (f"background-color: rgba(63,224,160,"
+                            f"{min(abs(v) / 8, 0.85):.2f}); color: #fff")
+                if v < -0.05:
+                    return (f"background-color: rgba(224,90,90,"
+                            f"{min(abs(v) / 8, 0.85):.2f}); color: #fff")
+                return f"background-color: {NAVY_CARD}; color: #fff"
+
+            def col_zone(v):
+                return {
+                    "Pivot-Zone": "background-color: rgba(63,224,160,0.8); color: #fff",
+                    "Leader": "background-color: rgba(63,224,160,0.4); color: #fff",
+                    "Mittelfeld": f"background-color: {NAVY_CARD}; color: #fff",
+                    "Angeschlagen": "background-color: rgba(224,90,90,0.7); color: #fff",
+                }.get(v, "")
+
+            def col_ampel(v):
+                return {
+                    "GO": "background-color: rgba(63,224,160,0.85); color: #fff",
+                    "Aufbau": f"background-color: {NAVY_CARD}; color: #fff",
+                    "kein Entry": "background-color: rgba(255,209,102,0.8); color: #000",
+                    "extended": "background-color: rgba(224,90,90,0.85); color: #fff",
+                    "unter MA50": "color: #9fb0e8",
+                }.get(v, "")
+
+            def col_trend(v):
+                if pd.isna(v):
+                    return ""
+                if v >= 3:
+                    return (f"background-color: rgba(63,224,160,"
+                            f"{0.85 if v == 4 else 0.45}); color: #fff")
+                if v <= 1:
+                    return (f"background-color: rgba(224,90,90,"
+                            f"{0.85 if v == 0 else 0.45}); color: #fff")
+                return f"background-color: {NAVY_CARD}; color: #fff"
+
+            def style_theme(t: pd.DataFrame):
+                def ma_vs_price(row):
+                    out = []
+                    for c in t.columns:
+                        if c in MA_COLS and pd.notna(row[c]):
+                            out.append("color: #3fe0a0"
+                                       if row["Kurs"] > row[c]
+                                       else "color: #e05a5a")
+                        else:
+                            out.append("")
+                    return out
+
+                return (t.style
+                        .apply(ma_vs_price, axis=1)
+                        .map(col_perf, subset=PCT_T)
+                        .map(col_zone, subset=["52W-Zone"])
+                        .map(col_ampel, subset=["Ampel"])
+                        .map(col_trend, subset=["Trend"])
+                        .map(col_pct, subset=["Ext. MA50 %"])
+                        .format(FMT_T, na_rep="–"))
+
+            tbl_t = build_theme_table("member")
+            st.caption("Tipp: Zeile anklicken -> Detail-Chart darunter · "
+                       "MA-Spalten mint = Kurs darueber, rot = darunter · "
+                       "Trend = Anzahl der MAs unter dem Kurs (0-4).")
+            ev_t = st.dataframe(style_theme(tbl_t), use_container_width=True,
+                                hide_index=True, key="theme_table",
+                                height=42 + 35 * len(tbl_t),
+                                on_select="rerun", selection_mode="single-row")
+            try:
+                rws_t = ev_t["selection"]["rows"]
+            except (TypeError, KeyError):
+                rws_t = []
+            if rws_t:
+                render_detail_chart(str(tbl_t.iloc[rws_t[0]]["Ticker"]),
+                                    str(tbl_t.iloc[rws_t[0]]["Aktie"]))
+
+            bench_tbl = build_theme_table("benchmark")
+            if not bench_tbl.empty:
+                st.markdown("#### Benchmarks")
+                st.dataframe(style_theme(bench_tbl), use_container_width=True,
+                             hide_index=True, height=42 + 35 * len(bench_tbl))
+
+            missing_t = sorted({t for t in sub.loc[sub["Role"] == "member",
+                                                   "Ticker"]
+                                if t not in met.index})
+            if missing_t:
+                st.caption(f"Ohne Daten: {', '.join(missing_t)}")
+
+            # --- Momentum-Quadrant (RRG) ---
+            st.markdown("#### Momentum-Quadrant")
+            rel_t = momentum_quadrant(
+                met, list(sub.loc[sub["Role"] == "member", "Ticker"]), bench)
+            if rel_t.empty:
+                st.info(f"Benchmark {bench} ohne Daten – Quadrant nicht "
+                        "berechenbar.")
+            else:
+                render_rrg(rel_t, bench, grp)
+                REL_C = ["Langfrist", "Kurzfrist", "Rel 4W", "Rel 3M",
+                         "Rel 6M", "Rel 12M"]
+                qt = rel_t.reset_index()[["Rang", "Ticker", "Quadrant"] + REL_C]
+
+                def col_quad(v):
+                    c = QUAD_COLOR.get(v)
+                    return (f"background-color: {c}; color: #10182f; "
+                            "font-weight: 700") if c else ""
+
+                st.dataframe(
+                    qt.style
+                    .map(col_quad, subset=["Quadrant"])
+                    .map(col_pct, subset=REL_C)
+                    .format({c: "{:+.1f}" for c in REL_C}, na_rep="–"),
+                    use_container_width=True, hide_index=True,
+                    height=42 + 35 * len(qt))
+                cnt = rel_t["Quadrant"].value_counts()
+                st.caption(
+                    "Verteilung: "
+                    + " · ".join(f"{q} {int(cnt[q])}" for q in QUAD_ORDER
+                                 if cnt.get(q, 0))
+                    + f" · Rel = Titel minus {bench} in Prozentpunkten · "
+                    "Langfrist = Ø Rel 6M/12M (sonst Rel 3M), "
+                    "Kurzfrist = Rel 4W")
+
+            st.caption(
+                f"Stand: {pd.Timestamp.today():%d.%m.%Y} · ATR = Wilder "
+                f"{atr_n} Tage · Ext. MA50 x = (Kurs - SMA50) / ATR · Ampel: "
+                f"GO {go_from:g} bis {go_to:g} x ATR, kein Entry bis "
+                f"{no_entry:g} x, darueber extended · Entry 3x/4x = SMA50 + 3 "
+                f"bzw. 4 ATR · 52W-Hoch = hoechstes High der letzten 252 Tage · "
+                f"$-Vol = Ø Kurs x Volumen der letzten 63 Tage · ATR-Veränd. = "
+                f"ATR gegen den Wert vor 21 Tagen.")
 
 # ----- Tab: Kalender (US-Makro, Quelle: Concretum) -----
 CAL_BASE = "https://calendar.concretumgroup.com/api"
@@ -2067,5 +2405,19 @@ with tab_universe:
                               use_container_width=True, key="ed_fut")
     if st.button("Futures speichern"):
         save_csv(edited_f, FUTURES_FILE)
+        st.cache_data.clear()
+        st.success("Gespeichert.")
+    st.divider()
+    st.caption("Theme-Tracker-Gruppen (themes.csv) – Spalten: Theme, Role "
+               "(member/benchmark), Ticker, Name, Benchmark (Ticker fuer den "
+               "Momentum-Quadranten).")
+    edited_t = st.data_editor(load_themes() if os.path.exists(THEMES_FILE)
+                              else pd.DataFrame(columns=["Theme", "Role",
+                                                         "Ticker", "Name",
+                                                         "Benchmark"]),
+                              num_rows="dynamic", use_container_width=True,
+                              key="ed_themes")
+    if st.button("Theme-Gruppen speichern"):
+        edited_t.to_csv(THEMES_FILE, index=False)
         st.cache_data.clear()
         st.success("Gespeichert.")

@@ -1,0 +1,108 @@
+Theme,Role,Ticker,Name,Benchmark
+Overall Tech,member,SMH,Semiconductor,XLK
+Overall Tech,member,SOXX,Semiconductor EQW,XLK
+Overall Tech,member,CIBR,Cybersecurity,XLK
+Overall Tech,member,IGV,Cloud / Software,XLK
+Overall Tech,member,GRID,Datacenter / Power,XLK
+Overall Tech,member,DRAM,Speicher,XLK
+Overall Tech,member,LYTE,Photonics / Optical Networking,XLK
+Overall Tech,member,EUV,Lithography,XLK
+Overall Tech,member,WGMI,NEO Cloud,XLK
+Overall Tech,member,ARKK,ARK Innovation,XLK
+Overall Tech,benchmark,XLK,Technology,XLK
+Semiconductor,member,NVDA,NVIDIA,SMH
+Semiconductor,member,TSM,Taiwan Semiconductor,SMH
+Semiconductor,member,AVGO,Broadcom,SMH
+Semiconductor,member,AMD,Advanced Micro Devices,SMH
+Semiconductor,member,ADI,Analog Devices,SMH
+Semiconductor,member,TXN,Texas Instruments,SMH
+Semiconductor,member,INTC,Intel,SMH
+Semiconductor,member,MRVL,Marvell,SMH
+Semiconductor,member,ASML,ASML Holding,SMH
+Semiconductor,member,LRCX,Lam Research,SMH
+Semiconductor,member,DELL,DELL Technology,SMH
+Semiconductor,member,AMAT,Applied Materials,SMH
+Semiconductor,member,KLAC,KLA Corp.,SMH
+Semiconductor,benchmark,XLK,Technology,SMH
+Semiconductor,benchmark,SMH,Semiconductor,SMH
+Semiconductor,benchmark,SOXX,Semiconductor EQW,SMH
+Memory,member,MU,Micron Technology,DRAM
+Memory,member,SNDK,Sandisk,DRAM
+Memory,member,SKHY,SK Hynix,DRAM
+Memory,member,STX,Seagate,DRAM
+Memory,member,P,Everpure,DRAM
+Memory,member,WDC,Western Digital,DRAM
+Memory,benchmark,EWY,MSCI Korea,DRAM
+Memory,benchmark,XLK,Technology,DRAM
+Memory,benchmark,DRAM,Memory,DRAM
+Cybersecurity,member,CRWD,Crowdstrike,CIBR
+Cybersecurity,member,FTNT,Fortinet,CIBR
+Cybersecurity,member,OKTA,Okta,CIBR
+Cybersecurity,member,NET,Cloudflare,CIBR
+Cybersecurity,member,PANW,Palo Alto Networks,CIBR
+Cybersecurity,member,ZS,Zscaler,CIBR
+Cybersecurity,member,FFIV,F5,CIBR
+Cybersecurity,member,RBRK,Rubrik,CIBR
+Cybersecurity,benchmark,XLK,Technology,CIBR
+Cybersecurity,benchmark,CIBR,Cyber Security,CIBR
+Cloud / AI Agent,member,PLTR,Palantir,IGV
+Cloud / AI Agent,member,MSFT,Microsoft,IGV
+Cloud / AI Agent,member,CRM,Salesforce,IGV
+Cloud / AI Agent,member,NOW,ServiceNow,IGV
+Cloud / AI Agent,member,ORCL,Oracle,IGV
+Cloud / AI Agent,member,DDOG,Datadog,IGV
+Cloud / AI Agent,member,TEAM,Atlassian,IGV
+Cloud / AI Agent,member,SHOP,Shopify,IGV
+Cloud / AI Agent,member,SNOW,Snowflake,IGV
+Cloud / AI Agent,benchmark,XLK,Technology,IGV
+Cloud / AI Agent,benchmark,IGV,Expanded Software,IGV
+Cloud / AI Agent,benchmark,SKYY,Cloud Computing,IGV
+Optical Networking,member,LITE,Lumentum Holdings,XLK
+Optical Networking,member,COHR,Coherent,XLK
+Optical Networking,member,CIEN,Ciena Corporation,XLK
+Optical Networking,member,CSCO,Cisco Systems,XLK
+Optical Networking,member,AAOI,Applied Optoelectronics,XLK
+Optical Networking,member,FN,Fabrinet,XLK
+Optical Networking,member,UCTT,Ultra Clean,XLK
+Optical Networking,member,AXTI,AXT Inc,XLK
+Optical Networking,member,CRDO,Credo,XLK
+Optical Networking,benchmark,XLK,Technology,XLK
+Optical Networking,benchmark,EUV,Lithography,XLK
+Optical Networking,benchmark,LYTE,Optical Networks,XLK
+NEO Cloud,member,CIFR,Cipher Mining,WGMI
+NEO Cloud,member,NBIS,Nebius,WGMI
+NEO Cloud,member,HUT,HUT 8,WGMI
+NEO Cloud,member,KEEL,KEEL,WGMI
+NEO Cloud,member,IREN,IREN,WGMI
+NEO Cloud,member,RIOT,RIOT,WGMI
+NEO Cloud,member,CRWV,Coreweave,WGMI
+NEO Cloud,member,APLD,Applied Digital,WGMI
+NEO Cloud,benchmark,XLK,Technology,WGMI
+NEO Cloud,benchmark,WGMI,NEO Cloud,WGMI
+ARKK,member,TSLA,Tesla,ARKK
+ARKK,member,SPCX,Space X,ARKK
+ARKK,member,TEM,Tempus AI,ARKK
+ARKK,member,CBRS,Cerebras,ARKK
+ARKK,member,CRCL,Circle,ARKK
+ARKK,member,CRSP,CRISPR Therapeutics,ARKK
+ARKK,benchmark,XLK,Technology,ARKK
+ARKK,benchmark,ARKK,ARK Innovation,ARKK
+Volume Leaders,member,NVDA,NVIDIA,XLK
+Volume Leaders,member,AMD,Advanced Micro Devices,XLK
+Volume Leaders,member,INTC,Intel,XLK
+Volume Leaders,member,MU,Micron Technology,XLK
+Volume Leaders,member,SNDK,Sandisk,XLK
+Volume Leaders,member,CRWD,Crowdstrike,XLK
+Volume Leaders,member,NET,Cloudflare,XLK
+Volume Leaders,member,PANW,Palo Alto Networks,XLK
+Volume Leaders,member,MSFT,Microsoft,XLK
+Volume Leaders,member,PLTR,Palantir,XLK
+Volume Leaders,member,LITE,Lumentum Holdings,XLK
+Volume Leaders,member,CSCO,Cisco Systems,XLK
+Volume Leaders,member,CRDO,Credo,XLK
+Volume Leaders,member,NBIS,Nebius,XLK
+Volume Leaders,member,CRWV,Coreweave,XLK
+Volume Leaders,member,TSLA,Tesla,XLK
+Volume Leaders,member,SPCX,Space X,XLK
+Volume Leaders,member,CBRS,Cerebras,XLK
+Volume Leaders,benchmark,XLK,Technology,XLK

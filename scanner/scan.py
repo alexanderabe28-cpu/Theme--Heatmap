@@ -31,7 +31,7 @@ TRENDS = {
 
 
 def load_config(path: str = CONFIG_FILE) -> dict:
-    with open(path, encoding="utf-8") as f:
+    with open(path, encoding="utf-8-sig") as f:
         cfg = json.load(f)
     return {k: v for k, v in cfg.items() if not k.startswith("_")}
 

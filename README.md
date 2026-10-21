@@ -83,3 +83,30 @@ python -m venv .venv
 (Survivorship-Bias). Market Cap im Scanner ist der aktuelle Wert. Yahoo kann
 einzelne Laeufe drosseln – ein ausgefallener Tag wird beim naechsten Lauf
 nachgeholt (die letzten 15 Handelstage werden immer neu berechnet).
+
+# Theme Tracker (Gruppen aus themes.csv)
+
+Der Tab **Theme Tracker** bildet den Excel-Tracker "Theme Tracker" in der App
+ab. Gruppen und Benchmarks stehen in `themes.csv` (Spalten: Theme, Role =
+member/benchmark, Ticker, Name, Benchmark) und sind im Tab "Universum" oder
+direkt im Repo editierbar. Die Daten kommen live von Yahoo (ein Download je
+Gruppe, 10 Minuten gecacht) – unbereinigte Kurse, damit SMA- und
+52-Wochen-Werte exakt zur Tabelle passen.
+
+Je Titel: Kurs, Performance 1D/1W/2W/4W/3M/6M/12M, Ø Dollar-Volumen (63 Tage),
+Trend (Anzahl der MAs unter dem Kurs), EMA10/SMA20/SMA50/SMA200, % vom
+52-Wochen-Hoch mit Zone (Pivot-Zone / Leader / Mittelfeld / Angeschlagen),
+ATR % und $, ATR-Extension zum SMA50 in % und in ATR-Vielfachen, die
+Entry-Level SMA50 + 3 bzw. 4 ATR und die Entry-Ampel
+(GO / kein Entry / extended). Darunter der **Momentum-Quadrant** (RRG) gegen
+den Gruppen-Benchmark: Leading / Improving / Weakening / Lagging aus
+Langfrist (Ø Rel 6M/12M) und Kurzfrist (Rel 4W), als Streudiagramm und
+Tabelle. Alle Schwellen sind im Tab unter "Parameter" einstellbar.
+
+Gegen die Excel-Datei gegengerechnet (Stand 20.10.2026, Abweichung 0,000 %):
+SMA20/50/200, Performance 1D/1W/2W/4W/3M/6M/12M (4 Wochen = 21 Handelstage),
+% vom 52-Wochen-Hoch, ATR (Wilder 14) und beide ATR-Extensionen. Abweichend:
+`EMA10` ist der Standard-EMA (span 10) – die Excel-Spalte stammt aus einer
+anderen Quelle und liegt je nach Titel bis zu 1,5 % daneben; `ATR-Veränd. %`
+ist hier ATR gegen den Wert vor 21 Tagen, die Excel-Spalte liess sich nicht
+reproduzieren.
