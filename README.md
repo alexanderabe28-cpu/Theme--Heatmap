@@ -130,3 +130,22 @@ Dateien und sind sofort da.
 
 Bekannt und rein optisch: leere Zahlenzellen zeigt Streamlit in gestylten
 Tabellen als "None" statt "–" (betrifft Titel ohne ausreichende Historie).
+
+## IBKR-Verbindung
+
+Der IBKR-Umschalter funktioniert **nur lokal**: TWS bzw. IB Gateway laeuft auf
+dem eigenen Rechner und ist aus der Streamlit-Cloud nicht erreichbar. Die App
+erkennt den Cloud-Betrieb und sagt das jetzt auch.
+
+Lokal noetig:
+1. `pip install ib_async` (steht in requirements.txt, fehlt aber in einer
+   bestehenden venv leicht)
+2. TWS oder IB Gateway starten und einloggen
+3. Dort unter **Einstellungen -> API -> Settings** den Haken bei
+   *Enable ActiveX and Socket Clients* setzen
+4. Port passend waehlen: 7496 live, 7497 Paper, 4001/4002 Gateway
+
+Die Seitenleiste prueft den Port vorab und nennt die Ursache, statt in einen
+langen Timeout zu laufen. **Pacing beachten:** IBKR erlaubt nur rund 60
+Historien-Abrufe je 10 Minuten, die App braucht einen je Ticker – grosse
+Universen laufen in die Sperre. Das Ergebnis wird deshalb zwischengespeichert.
