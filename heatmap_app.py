@@ -36,7 +36,7 @@ TIMEFRAMES_FUT = {
 }
 
 HISTORY_PERIOD = "6mo"
-QUOTE_TTL = 60
+QUOTE_TTL = 300        # Yahoo liefert ~15 min verzoegert – haeufiger neu zu laden bringt nichts
 PROFILE_TTL = 24 * 3600
 
 # CBOE-Palette: Coral-Rot -> Navy (neutral) -> Mint-Gruen
@@ -114,13 +114,20 @@ def fetch_closes_ibkr(tickers: tuple, host: str, port: int, client_id: int) -> p
 
 
 @st.cache_data(ttl=QUOTE_TTL, show_spinner=False)
+def fetch_bulk(tickers: tuple, period: str = HISTORY_PERIOD) -> dict:
+    """Ein OHLCV-Download je (Ticker-Satz, Zeitraum).
+
+    Kurse und Signale teilen sich den Abruf – sonst laedt Tab 1 dieselben
+    Ticker zweimal (einmal fuer die Kurse, einmal fuer RVOL/ATR).
+    """
+    return bulk_download(list(tickers), period)
+
+
+@st.cache_data(ttl=QUOTE_TTL, show_spinner=False)
 def fetch_closes(tickers: tuple, period: str = HISTORY_PERIOD) -> pd.DataFrame:
-    data = yf.download(
-        list(tickers), period=period,
-        auto_adjust=True, progress=False, group_by="column",
-        threads=False,          # Cloud: Thread-je-Ticker sprengt das Limit
-    )
-    closes = data["Close"]
+    closes = fetch_bulk(tuple(tickers), period).get("Close")
+    if closes is None or closes.empty:
+        return pd.DataFrame()
     if isinstance(closes, pd.Series):
         closes = closes.to_frame(name=tickers[0])
     return closes.dropna(how="all")
@@ -128,18 +135,28 @@ def fetch_closes(tickers: tuple, period: str = HISTORY_PERIOD) -> pd.DataFrame:
 
 @st.cache_data(ttl=PROFILE_TTL, show_spinner=False)
 def fetch_sizes(tickers: tuple) -> pd.Series:
-    sizes = {}
-    for t in tickers:
-        size = np.nan
+    """Market Cap / AUM je Ticker (ein HTTP-Abruf pro Titel).
+
+    Sequenziell dauert das bei 50+ Titeln rund 30 Sekunden. Ein kleiner
+    Thread-Pool (8) kuerzt das auf wenige Sekunden und bleibt weit unter dem
+    Thread-Limit der Streamlit-Cloud – anders als yfinance mit einem Thread
+    je Ticker.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    def one(t: str) -> float:
         try:
             tk = yf.Ticker(t)
             size = tk.fast_info.get("marketCap")
             if not size:
                 size = tk.info.get("totalAssets") or tk.info.get("marketCap")
+            return float(size) if size else np.nan
         except Exception:
-            pass
-        sizes[t] = float(size) if size else np.nan
-    return pd.Series(sizes, name="Size")
+            return np.nan
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        values = list(pool.map(one, tickers))
+    return pd.Series(dict(zip(tickers, values)), name="Size")
 
 
 RS_UNIVERSE_FILE = os.path.join(BASE, "rs_universe.csv")
@@ -380,7 +397,7 @@ def fetch_signals(tickers: tuple) -> pd.DataFrame:
     gerechnet (Run-Rate-Logik) statt naiv gegen den Tagesschnitt zu stellen.
     ATR-Ext: (Close - EMA21) / ATR14 – Werte um +-4 markieren Ueberdehnung.
     """
-    d = bulk_download(list(tickers), "4mo")
+    d = fetch_bulk(tuple(tickers), HISTORY_PERIOD)
     if not d:
         return pd.DataFrame()
     C, H, L, V = d["Close"], d["High"], d["Low"], d["Volume"]
@@ -423,6 +440,17 @@ def fetch_signals(tickers: tuple) -> pd.DataFrame:
         out[t] = {"RVOL_live": rvol_live, "RVOL_prev": rvol_prev,
                   "ATRext": ext}
     return pd.DataFrame(out).T
+
+
+def fmt_num(spec: str):
+    """Zahlenformat fuer st.dataframe, Fehlwerte als '–'.
+
+    Hinweis: In gestylten Tabellen malt Streamlit leere Zahlenzellen selbst
+    als "None" und ignoriert dabei den Anzeigewert – weder dieser Formatter
+    noch `na_rep` aendern daran etwas. Betrifft nur Titel ohne ausreichende
+    Historie und ist rein optisch.
+    """
+    return lambda v: "–" if pd.isna(v) else spec.format(v)
 
 
 def col_pct(v):
@@ -571,23 +599,30 @@ with st.sidebar:
         ib_cid = st.number_input("Client-ID", value=17, step=1)
     st.caption("Futures/Makro laufen immer ueber Yahoo.")
     st.subheader("Auto-Refresh")
-    interval = st.selectbox("Intervall", ["Aus", "30 s", "60 s", "5 min"], index=2,
+    interval = st.selectbox("Intervall", ["Aus", "60 s", "5 min", "15 min"], index=0,
                             label_visibility="collapsed")
     if st.button("Jetzt aktualisieren"):
         st.cache_data.clear()
 
-ms = {"Aus": 0, "30 s": 30_000, "60 s": 60_000, "5 min": 300_000}[interval]
+ms = {"Aus": 0, "60 s": 60_000, "5 min": 300_000, "15 min": 900_000}[interval]
 if ms:
     st_autorefresh(interval=ms, key="auto_refresh")
 
-(tab_map, tab_idx, tab_fut, tab_watch, tab_ovsd, tab_gen, tab_breadth,
- tab_scan, tab_themes, tab_cal, tab_gate, tab_universe) = st.tabs(
-    ["Aktien / ETF", "Index-Maps", "Futures / Makro", "Watchlist", "OvsD",
-     "Generaele", "Breadth", "Scanner", "Theme Tracker", "Kalender",
-     "Gate-Check", "Universum"])
+VIEWS = ["Aktien / ETF", "Index-Maps", "Futures / Makro", "Watchlist", "OvsD",
+         "Generaele", "Breadth", "Scanner", "Theme Tracker", "Kalender",
+         "Gate-Check", "Universum"]
+# Bewusst kein st.tabs: Streamlit fuehrt bei jedem Rerun ALLE Tab-Bloecke aus,
+# auch die unsichtbaren. Da in fast jedem Block ein Yahoo-Download steckt,
+# dauert ein Durchlauf so ueber eine Minute. Mit der Auswahl laeuft nur der
+# sichtbare Block.
+view = st.segmented_control("Ansicht", VIEWS, default=VIEWS[0], key="view_pick",
+                            label_visibility="collapsed")
+# Abwaehlen (Klick auf die aktive Schaltflaeche) wuerde None liefern
+view = view or st.session_state.get("view_last", VIEWS[0])
+st.session_state["view_last"] = view
 
 # ----- Tab 1: Aktien/ETF -----
-with tab_map:
+if view == "Aktien / ETF":
     universe = load_csv(TICKER_FILE)
     if universe.empty:
         st.warning("Universum leer – Tab 'Universum'.")
@@ -682,7 +717,7 @@ with tab_map:
                        "Umsortieren · RVOL >= 1.5 hervorgehoben.")
 
 # ----- Tab 2: Futures/Makro -----
-with tab_fut:
+if view == "Futures / Makro":
     fut = load_csv(FUTURES_FILE)
     if fut.empty:
         st.warning("futures.csv ist leer.")
@@ -710,7 +745,7 @@ with tab_fut:
                                     nm.iloc[0] if len(nm) else picked_f)
 
 # ----- Tab 3: Watchlist -----
-with tab_watch:
+if view == "Watchlist":
     wl = load_csv(WATCHLIST_FILE) if os.path.exists(WATCHLIST_FILE) else pd.DataFrame(
         columns=["Ticker", "Theme", "Name"])
     col_l, col_r = st.columns([3, 1])
@@ -800,7 +835,7 @@ OVSD_UNIVERSE = pd.DataFrame({
              "XLU · Utilities", "XLV · Health", "XLP · Staples"],
 })
 
-with tab_ovsd:
+if view == "OvsD":
     tfo = st.radio("Zeitfenster", list(TIMEFRAMES.keys()), horizontal=True,
                    label_visibility="collapsed", key="tf_ovsd")
     with st.spinner("Lade Sektoren..."):
@@ -955,7 +990,7 @@ with tab_ovsd:
 # ----- Tab: Generaele (Mega-Cap-Baskets vs. Fussvolk) -----
 GENERALS_FILE = os.path.join(BASE, "generals.csv")
 
-with tab_gen:
+if view == "Generaele":
     if not os.path.exists(GENERALS_FILE):
         st.error("generals.csv fehlt im App-Ordner.")
     else:
@@ -1231,7 +1266,7 @@ def render_breadth_chart(d: pd.DataFrame, panels: list, bench: pd.Series | None,
     st.plotly_chart(fig, use_container_width=True, key="breadth_hist")
 
 
-with tab_breadth:
+if view == "Breadth":
     meta_b = load_data_meta()
     raw_b = pd.DataFrame()
     if meta_b:
@@ -1369,8 +1404,10 @@ with tab_breadth:
             .apply(hl_pairs, axis=1)
             .map(col_ratio, subset=["Ratio 5T", "Ratio 10T"])
             .map(col_level, subset=pct_mon)
-            .format({"Ratio 5T": "{:.2f}", "Ratio 10T": "{:.2f}", bsym: "{:,.2f}",
-                     **{c: "{:.1f}" for c in pct_mon}}, na_rep="–"),
+            .format({k: fmt_num(v) for k, v in
+                     {"Ratio 5T": "{:.2f}", "Ratio 10T": "{:.2f}",
+                      bsym: "{:,.2f}",
+                      **{c: "{:.1f}" for c in pct_mon}}.items()}),
             use_container_width=True, hide_index=True,
             height=42 + 35 * len(mon_tbl),
         )
@@ -1401,7 +1438,7 @@ def load_scanner_config() -> dict:
         return {k: v for k, v in _json.load(f).items() if not k.startswith("_")}
 
 
-with tab_scan:
+if view == "Scanner":
     snap = load_scan_snapshot()
     if snap.empty:
         st.info("Noch kein Scanner-Snapshot – er entsteht beim taeglichen "
@@ -1506,7 +1543,7 @@ with tab_scan:
         res.insert(1, "Neu", res["Ticker"].map(lambda t: "★" if t in new_set else ""))
 
         res = res.sort_values(["RS", "Gain50%"], ascending=False).reset_index(drop=True)
-        view = pd.DataFrame({
+        scan_view = pd.DataFrame({
             "Ticker": res["Ticker"], "Neu": res["Neu"], "Name": res["Name"],
             "Sektor": res["Sector"], "Branche": res["Industry"],
             "Cap Mrd $": res["MarketCap"] / 1e9, "Kurs": res["Price"],
@@ -1532,33 +1569,35 @@ with tab_scan:
             return ("background-color: rgba(63,224,160,0.75); color: #fff"
                     if v >= 1.5 else "")
 
-        st.markdown(f"**{len(view)} Treffer** von {len(snap)} Titeln"
+        st.markdown(f"**{len(scan_view)} Treffer** von {len(snap)} Titeln"
                     + (f" · ★ neu in der gespeicherten Liste: {len(new_set)}"
                        if new_set else ""))
         ev_s = st.dataframe(
-            view.style
+            scan_view.style
             .map(col_pct, subset=["1D %", "1M %", "3M %"])
             .map(col_atrx, subset=["ATRx MA50"])
             .map(col_rvol_s, subset=["RVOL"])
-            .format({"Cap Mrd $": "{:,.2f}", "Kurs": "{:,.2f}", "1D %": "{:+.2f}",
-                     "ATR%": "{:.2f}", "Gain MA50 %": "{:+.1f}",
-                     "ATRx MA50": "{:+.2f}", "AVOL Mio": "{:.2f}",
-                     "RVOL": "{:.2f}", "1M %": "{:+.1f}", "3M %": "{:+.1f}",
-                     "vom Hoch %": "{:+.1f}"}, na_rep="–"),
+            .format({k: fmt_num(v) for k, v in
+                     {"Cap Mrd $": "{:,.2f}", "Kurs": "{:,.2f}",
+                      "1D %": "{:+.2f}", "ATR%": "{:.2f}",
+                      "Gain MA50 %": "{:+.1f}", "ATRx MA50": "{:+.2f}",
+                      "AVOL Mio": "{:.2f}", "RVOL": "{:.2f}",
+                      "1M %": "{:+.1f}", "3M %": "{:+.1f}",
+                      "vom Hoch %": "{:+.1f}"}.items()}),
             use_container_width=True, hide_index=True,
-            height=min(42 + 35 * len(view), 900), key="scan_table",
+            height=min(42 + 35 * len(scan_view), 900), key="scan_table",
             on_select="rerun", selection_mode="single-row")
         try:
             sel_rows = ev_s["selection"]["rows"]
         except (TypeError, KeyError):
             sel_rows = []
         if sel_rows:
-            sym_s = str(view.iloc[sel_rows[0]]["Ticker"])
-            render_detail_chart(sym_s, str(view.iloc[sel_rows[0]]["Name"]))
+            sym_s = str(scan_view.iloc[sel_rows[0]]["Ticker"])
+            render_detail_chart(sym_s, str(scan_view.iloc[sel_rows[0]]["Name"]))
 
         ex1, ex2 = st.columns(2)
         with ex1:
-            st.download_button("Treffer als CSV", view.to_csv(index=False),
+            st.download_button("Treffer als CSV", scan_view.to_csv(index=False),
                                file_name="scanner_treffer.csv", mime="text/csv")
             tv = ",".join(f"{e}:{t}" for e, t in zip(res["Exchange"], res["Ticker"])
                           if e in ("NASDAQ", "NYSE", "AMEX"))
@@ -1614,7 +1653,7 @@ def fetch_index_ohlcv(tickers: tuple) -> tuple:
     return closes, d.get("Volume")
 
 
-with tab_idx:
+if view == "Index-Maps":
     col_sel, col_tf = st.columns([2, 3])
     with col_sel:
         idx_choice = st.selectbox("Index", list(INDEX_FILES.keys()),
@@ -1904,7 +1943,7 @@ def render_rrg(rel: pd.DataFrame, bench: str, group: str) -> None:
     st.plotly_chart(fig, use_container_width=True, key="rrg_chart")
 
 
-with tab_themes:
+if view == "Theme Tracker":
     themes = load_themes()
     if themes.empty:
         st.warning("themes.csv fehlt oder ist leer – Gruppen im Tab "
@@ -1951,14 +1990,15 @@ with tab_themes:
         else:
             PCT_T = ["1D %", "1W %", "2W %", "4W %", "3M %", "6M %", "12M %"]
             MA_COLS = ["EMA10", "SMA20", "SMA50", "SMA200"]
-            FMT_T = {"Kurs": "{:,.2f}", "$-Vol Ø3M Mio": "{:,.0f}",
-                     "EMA10": "{:,.2f}", "SMA20": "{:,.2f}", "SMA50": "{:,.2f}",
-                     "SMA200": "{:,.2f}", "vom 52W-Hoch %": "{:+.1f}",
-                     "ATR %": "{:.2f}", "ATR $": "{:,.2f}",
-                     "ATR-Veränd. %": "{:+.1f}", "Ext. MA50 %": "{:+.2f}",
-                     "Ext. MA50 x": "{:+.2f}", "Entry 3x": "{:,.2f}",
-                     "Entry 4x": "{:,.2f}", "Trend": "{:.0f}",
-                     **{c: "{:+.2f}" for c in PCT_T}}
+            FMT_T = {k: fmt_num(v) for k, v in {
+                "Kurs": "{:,.2f}", "$-Vol Ø3M Mio": "{:,.0f}",
+                "EMA10": "{:,.2f}", "SMA20": "{:,.2f}", "SMA50": "{:,.2f}",
+                "SMA200": "{:,.2f}", "vom 52W-Hoch %": "{:+.1f}",
+                "ATR %": "{:.2f}", "ATR $": "{:,.2f}",
+                "ATR-Veränd. %": "{:+.1f}", "Ext. MA50 %": "{:+.2f}",
+                "Ext. MA50 x": "{:+.2f}", "Entry 3x": "{:,.2f}",
+                "Entry 4x": "{:,.2f}", "Trend": "{:.0f}",
+                **{c: "{:+.2f}" for c in PCT_T}}.items()}
 
             def build_theme_table(role: str) -> pd.DataFrame:
                 part = sub[sub["Role"] == role].drop_duplicates("Ticker")
@@ -2047,7 +2087,7 @@ with tab_themes:
                         .map(col_ampel, subset=["Ampel"])
                         .map(col_trend, subset=["Trend"])
                         .map(col_pct, subset=["Ext. MA50 %"])
-                        .format(FMT_T, na_rep="–"))
+                        .format(FMT_T))
 
             tbl_t = build_theme_table("member")
             st.caption("Tipp: Zeile anklicken -> Detail-Chart darunter · "
@@ -2099,7 +2139,7 @@ with tab_themes:
                     qt.style
                     .map(col_quad, subset=["Quadrant"])
                     .map(col_pct, subset=REL_C)
-                    .format({c: "{:+.1f}" for c in REL_C}, na_rep="–"),
+                    .format({c: fmt_num("{:+.1f}") for c in REL_C}),
                     use_container_width=True, hide_index=True,
                     height=42 + 35 * len(qt))
                 cnt = rel_t["Quadrant"].value_counts()
@@ -2145,7 +2185,7 @@ def fetch_cal_events(codes: tuple, days: int) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-with tab_cal:
+if view == "Kalender":
     try:
         catalog = fetch_cal_catalog()
     except Exception as e:
@@ -2287,7 +2327,7 @@ def atr_ext_50ma(ticker: str) -> float:
     return float((c.iloc[-1] - sma50) / atr) if atr else float("nan")
 
 
-with tab_gate:
+if view == "Gate-Check":
     st.caption("Vor jeder Order. Hartes Gate offen = NO-GO, weiche offen = "
                "Vorsicht. Keine Speicherung - jeder Trade wird frisch geprueft.")
     g1, g2, g3 = st.columns([1, 2, 1])
@@ -2378,7 +2418,7 @@ with tab_gate:
     st.text_input("Journal-Zeile (kopierbar)", value=line, key="gate_line")
 
 # ----- Tab 7: Universum -----
-with tab_universe:
+if view == "Universum":
     st.caption("Aktien/ETF-Universum (tickers.csv) – Yahoo-Notation, Zeilen via + hinzufuegen.")
     edited = st.data_editor(load_csv(TICKER_FILE), num_rows="dynamic",
                             use_container_width=True, key="ed_stocks")

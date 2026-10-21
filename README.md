@@ -110,3 +110,23 @@ SMA20/50/200, Performance 1D/1W/2W/4W/3M/6M/12M (4 Wochen = 21 Handelstage),
 anderen Quelle und liegt je nach Titel bis zu 1,5 % daneben; `ATR-Veränd. %`
 ist hier ATR gegen den Wert vor 21 Tagen, die Excel-Spalte liess sich nicht
 reproduzieren.
+
+## Tempo
+
+Die Ansichten werden ueber eine Auswahlleiste umgeschaltet, nicht ueber
+`st.tabs`: Streamlit fuehrt bei jedem Rerun alle Tab-Bloecke aus, auch die
+unsichtbaren – mit einem Yahoo-Download in fast jedem Block dauerte ein
+Durchlauf rund 80 Sekunden. Jetzt laeuft nur der sichtbare Block.
+
+Weitere Bremsen entfernt: Auto-Refresh steht standardmaessig auf "Aus"
+(vorher 60 s, was den 60-Sekunden-Cache bei jedem Lauf verfallen liess),
+Kursdaten werden 5 statt 1 Minute zwischengespeichert, Kurse und
+RVOL/ATR teilen sich einen Download statt zweier, und die Market Caps
+laufen ueber einen kleinen Thread-Pool statt nacheinander.
+
+Gemessen: Erststart 15-17 s (vorher ~80 s), jeder weitere Wechsel 0,1-6 s,
+erneuter Aufruf derselben Ansicht 0,2-0,3 s. Breadth und Scanner lesen nur
+Dateien und sind sofort da.
+
+Bekannt und rein optisch: leere Zahlenzellen zeigt Streamlit in gestylten
+Tabellen als "None" statt "–" (betrifft Titel ohne ausreichende Historie).
