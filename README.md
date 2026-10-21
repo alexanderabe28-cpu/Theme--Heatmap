@@ -134,8 +134,10 @@ Tabellen als "None" statt "–" (betrifft Titel ohne ausreichende Historie).
 ## IBKR-Verbindung
 
 Der IBKR-Umschalter funktioniert **nur lokal**: TWS bzw. IB Gateway laeuft auf
-dem eigenen Rechner und ist aus der Streamlit-Cloud nicht erreichbar. Die App
-erkennt den Cloud-Betrieb und sagt das jetzt auch.
+dem eigenen Rechner und ist aus der Streamlit-Cloud nicht erreichbar. In der
+Cloud blendet die App die Auswahl deshalb ganz aus und nutzt immer Yahoo.
+Erkannt wird der Cloud-Betrieb am Pfad `/mount/src`; `HEATMAP_CLOUD=1`
+erzwingt ihn (zum Testen oder wenn die Erkennung mal nicht greift).
 
 Lokal noetig:
 1. `pip install ib_async` (steht in requirements.txt, fehlt aber in einer
@@ -149,3 +151,60 @@ Die Seitenleiste prueft den Port vorab und nennt die Ursache, statt in einen
 langen Timeout zu laufen. **Pacing beachten:** IBKR erlaubt nur rund 60
 Historien-Abrufe je 10 Minuten, die App braucht einen je Ticker – grosse
 Universen laufen in die Sperre. Das Ergebnis wird deshalb zwischengespeichert.
+
+# Stage-Analyse (Sector-Map)
+
+Jeder Titel der Sector-Map bekommt eine Stage nach Weinstein, mit Unterphase
+in Anlehnung an Oliver Kells "Cycle of Price Action". Sie steht als farbige
+Spalte in der Tabelle, im Tooltip der Kachel und unter dem Detail-Chart;
+darunter die Verteilung ueber das ganze Universum.
+
+**Hauptstufe** aus Kurs und SMA200 samt dessen 20-Tage-Steigung
+(Tagesvariante der 30-Wochen-Linie):
+
+| Stufe | Bedingung |
+|---|---|
+| 2 Advancing | Kurs ueber steigendem SMA200 |
+| 3 Distribution | Kurs ueber SMA200, Steigung flach oder negativ |
+| 4 Declining | Kurs unter fallendem SMA200 |
+| 1 Basing | Kurs unter SMA200, Steigung nicht mehr fallend |
+
+**Unterphase** aus der Kurslage, mit `ext10 = (Kurs - EMA10) / ATR14`:
+2C ab ext10 >= 3 (Exhaustion), 2B ueber SMA50, 2A darunter (Ruecksetzer);
+3A haelt den SMA50, 3B darunter; 4C ab ext10 <= -3 (Kapitulation), 4A erst
+<= 25 Tage unter SMA200, sonst 4B; 1B ueber SMA50 mit EMA10 ueber EMA20
+(Wedge Pop), sonst 1A.
+
+Ehrliche Einordnung: Die Hauptstufe ist messbar und folgt Weinstein. Kells
+Unterphasen sind eigentlich Chartmuster (Wedge Pop, Base 'n Break, Exhaustion
+Extension) – mechanisch nicht sauber erkennbar. Der Buchstabe steht hier
+deshalb fuer die Kurslage zu SMA50/EMA10: gut zum Sortieren und Filtern,
+kein Ersatz fuer den Blick auf den Chart.
+
+Dafuer laedt die App 2 Jahre Historie statt 6 Monate (SMA200 braucht 200
+Tage). Das kostet praktisch keine Zeit – gemessen 10,3 s gegen 10,5 s, weil
+die Anzahl der Abrufe gleich bleibt.
+
+# Ansichten
+
+Sector-Map (frueher "Aktien / ETF") und Stock Map (frueher "Index-Maps").
+Die Stock Map filtert zusaetzlich nach Groessenklasse, bevor sie laedt –
+das spart bei S&P 500 und Small Caps spuerbar Zeit:
+
+| Klasse | Market Cap |
+|---|---|
+| Small Cap | 300 Mio bis 2 Mrd |
+| Mid Cap | 2 bis 10 Mrd |
+| Large Cap | 10 bis 200 Mrd |
+| Mega Cap | ab 200 Mrd |
+
+Die Market Caps stammen aus `data/universe/master.csv` (taeglicher Lauf),
+kosten also keinen zusaetzlichen Abruf. Abdeckung: S&P 500 und Nasdaq 100
+rund 100 %, Small Caps rund 90 %; Titel ohne Wert bleiben ungefiltert und
+werden in der Fusszeile ausgewiesen.
+
+Die Ansichten **Watchlist** und **Gate-Check** sind entfallen. Damit wurden
+auch `compute_ibd_rs`, `fetch_universe_ohlcv` und `compute_breadth`
+ueberfluessig (Letzteres war seit dem Breadth-Umbau ohnehin tot).
+`watchlist.csv` und `rs_universe.csv` bleiben im Repo, werden aber nicht
+mehr gelesen.

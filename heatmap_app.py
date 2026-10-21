@@ -21,7 +21,6 @@ from streamlit_autorefresh import st_autorefresh
 BASE = os.path.dirname(__file__)
 TICKER_FILE = os.path.join(BASE, "tickers.csv")
 FUTURES_FILE = os.path.join(BASE, "futures.csv")
-WATCHLIST_FILE = os.path.join(BASE, "watchlist.csv")
 
 TIMEFRAMES = {          # Label -> (Handelstage zurueck, Farbskalen-Grenze +/- %)
     "1D": (1, 3.0),
@@ -37,7 +36,7 @@ TIMEFRAMES_FUT = {
     "4W": (20, 8.0),
 }
 
-HISTORY_PERIOD = "6mo"
+HISTORY_PERIOD = "2y"   # 2 Jahre, damit SMA200 und dessen Steigung (Stage-Analyse) rechenbar sind
 QUOTE_TTL = 300        # Yahoo liefert ~15 min verzoegert – haeufiger neu zu laden bringt nichts
 PROFILE_TTL = 24 * 3600
 
@@ -90,7 +89,10 @@ def save_csv(df: pd.DataFrame, path: str) -> None:
 
 
 # ---------------- Daten holen ----------------
-IN_CLOUD = os.path.exists("/mount/src")      # Streamlit Community Cloud
+# Streamlit Community Cloud. HEATMAP_CLOUD=1 erzwingt den Cloud-Modus
+# (kein IBKR-Umschalter) – auch nuetzlich zum Testen.
+IN_CLOUD = (os.path.exists("/mount/src")
+            or os.environ.get("HEATMAP_CLOUD") == "1")
 
 
 def ibkr_check(host: str, port: int, timeout: float = 1.5) -> tuple:
@@ -201,8 +203,6 @@ def fetch_sizes(tickers: tuple) -> pd.Series:
     return pd.Series(dict(zip(tickers, values)), name="Size")
 
 
-RS_UNIVERSE_FILE = os.path.join(BASE, "rs_universe.csv")
-RS_TTL = 12 * 3600      # RS/Breadth 12 h zwischenspeichern
 
 
 def bulk_download(tickers: list, period: str, chunk: int = 60,
@@ -243,112 +243,6 @@ def bulk_download(tickers: list, period: str, chunk: int = 60,
                 df = df.to_frame(name=sub[0])
             parts.setdefault(field, []).append(df)
     return {f: pd.concat(v, axis=1) for f, v in parts.items()}
-
-
-@st.cache_data(ttl=RS_TTL, show_spinner=False)
-def fetch_universe_ohlcv(extra_symbols: tuple) -> dict:
-    """OHLCV fuer das S&P-500-Universum (+ Watchlist). Ein Download fuer
-    RS-Rating UND Breadth-Panel."""
-    try:
-        uni = pd.read_csv(RS_UNIVERSE_FILE)["Ticker"].astype(str).tolist()
-    except Exception:
-        uni = []
-    symbols = sorted(set(uni) | {s.upper() for s in extra_symbols})
-    return bulk_download(symbols, "18mo")
-
-
-@st.cache_data(ttl=RS_TTL, show_spinner=False)
-def compute_ibd_rs(extra_symbols: tuple) -> pd.Series:
-    """IBD-Stil RS-Rating (1-99).
-
-    Gewichtete 12-Monats-Performance: 40 % juengstes Quartal, je 20 % die drei
-    davor. Anschliessend Perzentilrang im Vergleichsuniversum (S&P 500 +
-    eigene Watchlist-Namen).
-
-    Hinweis: Proxy, nicht das offizielle IBD-Rating – IBD rankt gegen ~7000
-    Titel, hier sind es ~500. Reihenfolge und Groessenordnung stimmen gut
-    ueberein, einzelne Werte koennen um einige Punkte abweichen.
-    """
-    data = fetch_universe_ohlcv(extra_symbols).get("Close")
-    if data is None:
-        return pd.Series(dtype="Int64")
-
-    scores = {}
-    for col in data.columns:
-        s = data[col].dropna()
-        if len(s) < 253:
-            continue                       # weniger als 12 Monate Historie
-        q1 = s.iloc[-1] / s.iloc[-64] - 1        # juengstes Quartal
-        q2 = s.iloc[-64] / s.iloc[-127] - 1
-        q3 = s.iloc[-127] / s.iloc[-190] - 1
-        q4 = s.iloc[-190] / s.iloc[-253] - 1
-        scores[col] = 0.4 * q1 + 0.2 * q2 + 0.2 * q3 + 0.2 * q4
-    sc = pd.Series(scores).dropna()
-    if sc.empty:
-        return pd.Series(dtype="Int64")
-    return (sc.rank(pct=True) * 98 + 1).round().astype(int)
-
-
-@st.cache_data(ttl=QUOTE_TTL, show_spinner=False)
-def compute_breadth(extra_symbols: tuple) -> dict:
-    """Breadth-Kennzahlen (Snapshot letzter Handelstag) gegen das
-    S&P-500-Universum. Definitionen:
-    - NH/NL: Close ueber/unter dem 252-Tage-Extrem (exkl. heute)
-    - A/D: Close vs. Vortags-Close
-    - Up/Down from Open: Close vs. heutiges Open
-    - Up/Down on Volume: A/D-Richtung UND Volumen > 50-Tage-Schnitt
-    - Up 4% / Down 4%: Tagesaenderung >= +4 % bzw. <= -4 %
-    - Stages (Weinstein-Naeherung via SMA200 und dessen 20-Tage-Steigung)
-    """
-    d = fetch_universe_ohlcv(extra_symbols)
-    C, O, V = d.get("Close"), d.get("Open"), d.get("Volume")
-    H, L = d.get("High"), d.get("Low")
-    if C is None or len(C) < 260:
-        return {}
-    prev = C.iloc[-2]
-    last = C.iloc[-1]
-    chg = last / prev - 1
-
-    hi252 = (H if H is not None else C).iloc[-253:-1].max()
-    lo252 = (L if L is not None else C).iloc[-253:-1].min()
-    res = {
-        "nh": int((last > hi252).sum()), "nl": int((last < lo252).sum()),
-        "adv": int((chg > 0).sum()), "dec": int((chg < 0).sum()),
-    }
-    if O is not None:
-        fo = last / O.iloc[-1] - 1
-        res["up_open"] = int((fo > 0).sum()); res["dn_open"] = int((fo < 0).sum())
-    if V is not None:
-        v50 = V.iloc[-51:-1].mean()
-        hivol = V.iloc[-1] > v50
-        res["up_vol"] = int(((chg > 0) & hivol).sum())
-        res["dn_vol"] = int(((chg < 0) & hivol).sum())
-    res["up4"] = int((chg >= 0.04).sum()); res["dn4"] = int((chg <= -0.04).sum())
-
-    # Above/Below SMA50 und SMA200
-    sma50 = C.rolling(50).mean().iloc[-1]
-    res["ab50"] = int((last > sma50).sum())
-    res["bl50"] = int((last < sma50).sum())
-    sma200_last = C.rolling(200).mean().iloc[-1]
-    res["ab200"] = int((last > sma200_last).sum())
-    res["bl200"] = int((last < sma200_last).sum())
-
-    # Stage-Analyse
-    sma200 = C.rolling(200).mean()
-    slope = sma200.iloc[-1] / sma200.iloc[-21] - 1
-    above = last > sma200.iloc[-1]
-    rising = slope > 0.002          # +0.2 % ueber 20 Tage = steigend
-    falling = slope < -0.002
-    valid = sma200.iloc[-1].notna()
-    st1 = (~above & ~falling & valid)              # Bodenbildung
-    st2 = (above & rising & valid)                 # Aufwaertstrend
-    st3 = (above & ~rising & valid)                # Topbildung
-    st4 = (~above & falling & valid)               # Abwaertstrend
-    res["stages"] = [int(st1.sum()), int(st2.sum()),
-                     int(st3.sum()), int(st4.sum())]
-    res["date"] = str(C.index[-1].date())
-    res["n"] = int(valid.sum())
-    return res
 
 
 def compute_changes(closes: pd.DataFrame) -> pd.DataFrame:
@@ -492,6 +386,117 @@ def fetch_signals(tickers: tuple) -> pd.DataFrame:
     return pd.DataFrame(out).T
 
 
+# ---------------- Stage-Analyse (Weinstein + Kell "Cycle of Price Action") ----
+# Vier Hauptstufen ueber SMA200 und dessen 20-Tage-Steigung, Unterphasen ueber
+# die 10/20-EMA-Struktur und die ATR-Ueberdehnung zum 10-EMA.
+STAGE_LABELS = {
+    "1A": "Basing · Boden, unter SMA50",
+    "1B": "Basing · ueber SMA50, Vorstufe Ausbruch",
+    "2A": "Advancing · Ruecksetzer unter SMA50",
+    "2B": "Advancing · Trend ueber SMA50",
+    "2C": "Advancing · ueberdehnt (Exhaustion)",
+    "3A": "Distribution · haelt noch den SMA50",
+    "3B": "Distribution · unter SMA50, kippt",
+    "4A": "Declining · frischer Bruch",
+    "4B": "Declining · Abwaertstrend",
+    "4C": "Declining · Kapitulation",
+    "–": "zu wenig Historie",
+}
+STAGE_COLOR = {"1": "#8a93b8", "2": MINT, "3": "#ffd166", "4": "#ff5fa2"}
+
+
+def _streak(mask: pd.Series) -> int:
+    """Wie viele Tage gilt die Bedingung am Ende ununterbrochen?"""
+    arr = mask.to_numpy(dtype=bool)
+    if not arr.size or not arr[-1]:
+        return 0
+    off = np.flatnonzero(~arr)
+    return int(arr.size - off[-1] - 1) if off.size else int(arr.size)
+
+
+@st.cache_data(ttl=QUOTE_TTL, show_spinner=False)
+def stage_analysis(tickers: tuple, ext_level: float = 3.0) -> pd.DataFrame:
+    """Stage je Ticker, Stand letzter Handelstag.
+
+    Hauptstufe (Weinstein, 200-Tage-Linie als Tagesvariante der 30-Wochen-Linie):
+        2 Advancing    Kurs ueber steigendem SMA200
+        3 Distribution Kurs ueber SMA200, Steigung flach oder negativ
+        4 Declining    Kurs unter fallendem SMA200
+        1 Basing       Kurs unter SMA200, Steigung nicht mehr fallend
+
+    Unterphase ueber die Kurslage, mit ext10 = (Kurs - EMA10) / ATR14:
+        2C ext10 >= ext_level (Exhaustion Extension)
+        2B Kurs ueber SMA50 (Trend laeuft), 2A darunter (Ruecksetzer)
+        3A Kurs haelt den SMA50, 3B darunter (Rollover)
+        4C ext10 <= -ext_level (Reversal Extension), 4A erst <= 25 Tage unter
+           SMA200 (frischer Bruch), sonst 4B
+        1B Kurs ueber SMA50 und EMA10 ueber EMA20 (Wedge Pop), sonst 1A
+
+    Mechanische Naeherung. Die Hauptstufe folgt Weinstein und ist messbar;
+    Kells Unterphasen sind eigentlich Chartmuster (Wedge Pop, Base 'n Break,
+    Exhaustion Extension). Hier steht der Buchstabe daher fuer die Kurslage
+    zu SMA50/EMA10 - brauchbar zum Sortieren, kein Ersatz fuer den Chart.
+    """
+    d = fetch_bulk(tuple(tickers), HISTORY_PERIOD)
+    C = d.get("Close")
+    if C is None or C.empty:
+        return pd.DataFrame()
+    H, L = d.get("High", C), d.get("Low", C)
+
+    out = {}
+    for t in C.columns:
+        c = C[t].dropna()
+        if len(c) < 210:                       # SMA200 + 20 Tage Steigung
+            out[t] = {"Stage": "–", "ext10": np.nan, "slope200": np.nan}
+            continue
+        h, l = H[t].reindex(c.index), L[t].reindex(c.index)
+        tr = pd.concat([h - l, (h - c.shift()).abs(),
+                        (l - c.shift()).abs()], axis=1).max(axis=1)
+        atr = tr.ewm(alpha=1 / 14, adjust=False).mean().iloc[-1]
+        ema10 = c.ewm(span=10, adjust=False).mean()
+        ema20 = c.ewm(span=20, adjust=False).mean()
+        sma50 = c.rolling(50).mean()
+        sma200 = c.rolling(200).mean()
+        last = c.iloc[-1]
+        slope = sma200.iloc[-1] / sma200.iloc[-21] - 1
+        ext10 = (last - ema10.iloc[-1]) / atr if atr and atr > 0 else np.nan
+        above200 = last > sma200.iloc[-1]
+        rising, falling = slope > 0.002, slope < -0.002
+
+        if above200 and rising:
+            if pd.notna(ext10) and ext10 >= ext_level:
+                code = "2C"
+            elif last > sma50.iloc[-1]:
+                code = "2B"
+            else:
+                code = "2A"
+        elif above200:
+            code = "3A" if last >= sma50.iloc[-1] else "3B"
+        elif falling:
+            if pd.notna(ext10) and ext10 <= -ext_level:
+                code = "4C"
+            elif _streak(c < sma200) <= 25:
+                code = "4A"
+            else:
+                code = "4B"
+        else:
+            code = ("1B" if (ema10.iloc[-1] > ema20.iloc[-1]
+                             and last > sma50.iloc[-1]) else "1A")
+        out[t] = {"Stage": code, "ext10": ext10, "slope200": slope * 100}
+
+    df = pd.DataFrame(out).T
+    df["Phase"] = df["Stage"].map(STAGE_LABELS)
+    df.index.name = "Ticker"
+    return df
+
+
+def col_stage(v):
+    """Faerbt die Stage-Spalte nach Hauptstufe."""
+    c = STAGE_COLOR.get(str(v)[:1])
+    return (f"background-color: {c}; color: #10182f; font-weight: 700"
+            if c else "color: #8a93b8")
+
+
 def fmt_num(spec: str):
     """Zahlenformat fuer st.dataframe, Fehlwerte als '–'.
 
@@ -547,6 +552,10 @@ def render_treemap(df: pd.DataFrame, tf: str, limit: float, key: str,
     else:
         df["ShortName"] = ""
         df["Name"] = df["Ticker"]
+    # Stage nur anhaengen, wenn vorhanden (Futures/OvsD haben keine)
+    has_stage = "Stage" in df.columns
+    cdata = ["Last", "1D", "1W", "2W", "4W", "Ticker", "ShortName",
+             "Name", "RVOLtxt", "EXTtxt"] + (["Stage"] if has_stage else [])
     fig = px.treemap(
         df,
         path=[px.Constant("Alle"), "Theme", label_col],
@@ -554,8 +563,7 @@ def render_treemap(df: pd.DataFrame, tf: str, limit: float, key: str,
         color=tf,
         color_continuous_scale=COLOR_SCALE,
         range_color=(-limit, limit),
-        custom_data=["Last", "1D", "1W", "2W", "4W", "Ticker", "ShortName",
-                     "Name", "RVOLtxt", "EXTtxt"],
+        custom_data=cdata,
     )
     idx = list(TIMEFRAMES.keys()).index(tf) + 1
     fig.update_traces(
@@ -570,7 +578,8 @@ def render_treemap(df: pd.DataFrame, tf: str, limit: float, key: str,
             "2W: %{customdata[3]:.2f} %<br>"
             "4W: %{customdata[4]:.2f} %<br>"
             "RVOL: %{customdata[8]} · ATR-Ext: %{customdata[9]}"
-            "<extra></extra>"
+            + ("<br>Stage: %{customdata[10]}" if has_stage else "")
+            + "<extra></extra>"
         ),
         marker=dict(line=dict(width=1.5, color=NAVY_BG)),
     )
@@ -643,9 +652,18 @@ st.title("Theme-Heatmap")
 
 with st.sidebar:
     st.subheader("Datenquelle (Aktien/ETF)")
-    source = st.radio("Quelle", ["Yahoo Finance (~15 min)", "IBKR (TWS/Gateway, live)"],
-                      label_visibility="collapsed")
-    use_ibkr = source.startswith("IBKR")
+    if IN_CLOUD:
+        # In der Cloud kann TWS nie erreichbar sein -> Auswahl gar nicht erst
+        # anbieten, sonst steht dauerhaft eine Warnung in der App.
+        use_ibkr = False
+        st.caption("Yahoo Finance (~15 min). Der IBKR-Umschalter erscheint "
+                   "nur in der lokal gestarteten App – TWS/Gateway laeuft auf "
+                   "deinem Rechner.")
+    else:
+        source = st.radio("Quelle",
+                          ["Yahoo Finance (~15 min)", "IBKR (TWS/Gateway, live)"],
+                          label_visibility="collapsed")
+        use_ibkr = source.startswith("IBKR")
     if use_ibkr:
         ib_host = st.text_input("Host", "127.0.0.1")
         ib_port = st.number_input("Port (7496 live / 7497 paper)", value=7496, step=1)
@@ -666,9 +684,8 @@ ms = {"Aus": 0, "60 s": 60_000, "5 min": 300_000, "15 min": 900_000}[interval]
 if ms:
     st_autorefresh(interval=ms, key="auto_refresh")
 
-VIEWS = ["Aktien / ETF", "Index-Maps", "Futures / Makro", "Watchlist", "OvsD",
-         "Generaele", "Breadth", "Scanner", "Theme Tracker", "Kalender",
-         "Gate-Check", "Universum"]
+VIEWS = ["Sector-Map", "Stock Map", "Futures / Makro", "OvsD", "Generaele",
+         "Breadth", "Scanner", "Theme Tracker", "Kalender", "Universum"]
 # Bewusst kein st.tabs: Streamlit fuehrt bei jedem Rerun ALLE Tab-Bloecke aus,
 # auch die unsichtbaren. Da in fast jedem Block ein Yahoo-Download steckt,
 # dauert ein Durchlauf so ueber eine Minute. Mit der Auswahl laeuft nur der
@@ -679,8 +696,8 @@ view = st.segmented_control("Ansicht", VIEWS, default=VIEWS[0], key="view_pick",
 view = view or st.session_state.get("view_last", VIEWS[0])
 st.session_state["view_last"] = view
 
-# ----- Tab 1: Aktien/ETF -----
-if view == "Aktien / ETF":
+# ----- Tab 1: Sector-Map (Aktien/ETF-Universum) -----
+if view == "Sector-Map":
     universe = load_csv(TICKER_FILE)
     if universe.empty:
         st.warning("Universum leer – Tab 'Universum'.")
@@ -725,7 +742,13 @@ if view == "Aktien / ETF":
                            "(20 Tage).")
         with st.spinner("Berechne RVOL / ATR-Extension..."):
             sig = fetch_signals(tickers)
+        with st.spinner("Bestimme Stages..."):
+            stages = stage_analysis(tickers)
         df = prepare(universe, closes, sizes, tf)
+        if not stages.empty:
+            df = df.merge(stages[["Stage"]], left_on="Ticker",
+                          right_index=True, how="left")
+            df["Stage"] = df["Stage"].fillna("–")
         if df.empty:
             st.error("Keine Kursdaten geladen. Meist drosselt Yahoo gerade "
                      "die Abrufe – in einer Minute nochmal 'Jetzt "
@@ -751,14 +774,27 @@ if view == "Aktien / ETF":
                                      for t, r in hot.head(8).iterrows()))
                 else:
                     st.caption(f"RVOL-Modus: {mode_txt} · kein Wert >= 1.5.")
+            if "Stage" in df.columns and (df["Stage"] != "–").any():
+                cnt_s = df["Stage"].value_counts()
+                st.caption(
+                    "Stages: "
+                    + " · ".join(f"{code} {int(cnt_s[code])}"
+                                 for code in STAGE_LABELS if code in cnt_s)
+                    + " — 1 Basing, 2 Advancing, 3 Distribution, 4 Declining "
+                      "(Weinstein über SMA200 und dessen 20-Tage-Steigung); "
+                      "Buchstabe = Kurslage zu SMA50/EMA10.")
             st.caption(
                 f"{tf} = letzter Kurs vs. Close vor {TIMEFRAMES[tf][0]} Handelstag(en) · "
                 f"Skala ±{limit:.0f} % · Stand: {closes.index[-1]:%Y-%m-%d} · "
                 f"Quelle: {'IBKR' if use_ibkr else 'Yahoo (~15 min)'}"
             )
             if picked:
-                nm = df[df["Ticker"] == picked]["Name"]
+                hit_p = df[df["Ticker"] == picked]
+                nm = hit_p["Name"]
                 render_detail_chart(picked, nm.iloc[0] if len(nm) else picked)
+                if not stages.empty and picked in stages.index:
+                    code_p = stages.loc[picked, "Stage"]
+                    st.caption(f"Stage {code_p} · {STAGE_LABELS.get(code_p, '')}")
 
             # --- Tabelle: alle Werte unter der Map ---
             st.markdown("#### Alle Werte")
@@ -770,6 +806,11 @@ if view == "Aktien / ETF":
             tbl_all = tbl_all.rename(columns={
                 "ATRext": "ATR-Ext", "RVOL_live": "RVOL live",
                 "RVOL_prev": "RVOL VT"})
+            if not stages.empty:
+                tbl_all = tbl_all.merge(stages[["Stage", "Phase"]],
+                                        left_on="Ticker", right_index=True,
+                                        how="left")
+                tbl_all.insert(3, "Stage", tbl_all.pop("Stage"))
             tbl_all = (tbl_all.sort_values("1D", ascending=False)
                        .reset_index(drop=True))
             pct_c = ["1D", "1W", "2W", "4W"]
@@ -783,17 +824,17 @@ if view == "Aktien / ETF":
                     return f"background-color: {NAVY_CARD}; color: #fff"
                 return "color: #9fb0e8"
 
-            st.dataframe(
-                tbl_all.style
-                .map(col_pct, subset=pct_c)
-                .map(col_rvol, subset=["RVOL live", "RVOL VT"])
-                .format({"Kurs": "{:,.2f}", "RVOL live": "{:.2f}",
-                         "RVOL VT": "{:.2f}",
-                         "ATR-Ext": "{:+.1f}",
-                         **{c: "{:+.2f} %" for c in pct_c}}),
-                use_container_width=True, hide_index=True,
-                height=42 + 35 * len(tbl_all),
-            )
+            styled_all = (tbl_all.style
+                          .map(col_pct, subset=pct_c)
+                          .map(col_rvol, subset=["RVOL live", "RVOL VT"])
+                          .format({k: fmt_num(v) for k, v in
+                                   {"Kurs": "{:,.2f}", "RVOL live": "{:.2f}",
+                                    "RVOL VT": "{:.2f}", "ATR-Ext": "{:+.1f}",
+                                    **{c: "{:+.2f} %" for c in pct_c}}.items()}))
+            if "Stage" in tbl_all.columns:
+                styled_all = styled_all.map(col_stage, subset=["Stage"])
+            st.dataframe(styled_all, use_container_width=True,
+                         hide_index=True, height=42 + 35 * len(tbl_all))
             st.caption("Sortiert nach 1D · Spaltenkopf anklicken zum "
                        "Umsortieren · RVOL >= 1.5 hervorgehoben.")
 
@@ -824,88 +865,6 @@ if view == "Futures / Makro":
                 nm = dff[dff["Ticker"] == picked_f]["Name"]
                 render_detail_chart(picked_f,
                                     nm.iloc[0] if len(nm) else picked_f)
-
-# ----- Tab 3: Watchlist -----
-if view == "Watchlist":
-    wl = load_csv(WATCHLIST_FILE) if os.path.exists(WATCHLIST_FILE) else pd.DataFrame(
-        columns=["Ticker", "Theme", "Name"])
-    col_l, col_r = st.columns([3, 1])
-    with col_r:
-        st.caption("Ticker pflegen (Yahoo-Notation):")
-        wl_edit = st.data_editor(
-            wl[["Ticker"]], num_rows="dynamic", use_container_width=True, key="ed_watch")
-        if st.button("Watchlist speichern", type="primary"):
-            save_csv(wl_edit, WATCHLIST_FILE)
-            st.cache_data.clear()
-            st.rerun()
-    with col_l:
-        if wl.empty:
-            st.info("Watchlist leer – rechts Ticker eintragen und speichern.")
-        else:
-            with st.spinner("Lade Watchlist..."):
-                closes_w = fetch_closes(tuple(wl["Ticker"]))
-            chg_w = compute_changes(closes_w)
-            tbl = wl[["Ticker"]].merge(chg_w, left_on="Ticker", right_index=True,
-                                       how="left")
-            tbl = tbl[["Ticker", "Last", "1D", "1W", "2W", "4W"]]
-            tbl = tbl.rename(columns={"Last": "Kurs"})
-            tbl = tbl.sort_values("1D", ascending=False).reset_index(drop=True)
-
-            # --- IBD-RS-Rating (optional, da Universum-Download ~2 min) ---
-            if st.session_state.get("rs_on"):
-                with st.spinner("Berechne IBD-RS gegen S&P-500-Universum..."):
-                    rs = compute_ibd_rs(tuple(tbl["Ticker"]))
-                tbl.insert(2, "RS", tbl["Ticker"].map(rs).astype("Int64"))
-                tbl = tbl.sort_values("RS", ascending=False).reset_index(drop=True)
-            else:
-                st.button("IBD-RS berechnen (~2 Min, dann 12 h gecacht)",
-                          key="rs_btn",
-                          on_click=lambda: st.session_state.update(rs_on=True))
-
-            pct_cols = ["1D", "1W", "2W", "4W"]
-
-            def col_rs(v):
-                """RS-Faerbung nach O'Neil-Schwellen: >=90 stark, <70 schwach."""
-                if pd.isna(v):
-                    return ""
-                if v >= 90:
-                    return "background-color: rgba(63,224,160,0.85); color: #fff"
-                if v >= 80:
-                    return "background-color: rgba(63,224,160,0.45); color: #fff"
-                if v >= 70:
-                    return f"background-color: {NAVY_CARD}; color: #fff"
-                return "background-color: rgba(224,90,90,0.55); color: #fff"
-
-            fmt = {"Kurs": "{:,.2f}"}
-            fmt.update({c: "{:+.2f} %" for c in pct_cols})
-            styled = (tbl.style
-                      .map(col_pct, subset=pct_cols)
-                      .format(fmt))
-            if "RS" in tbl.columns:
-                styled = styled.map(col_rs, subset=["RS"])
-            st.caption("Tipp: Kaestchen links neben dem Ticker anklicken "
-                       "-> Detail-Chart erscheint darunter.")
-            ev = st.dataframe(styled, use_container_width=True, hide_index=True,
-                              height=42 + 35 * len(tbl), key="wl_table",
-                              on_select="rerun", selection_mode="single-row")
-            missing_w = tbl[tbl["1D"].isna()]["Ticker"].tolist()
-            if missing_w:
-                st.caption(f"Ohne Daten: {', '.join(missing_w)}")
-            st.caption(
-                f"Sortiert nach {'RS' if 'RS' in tbl.columns else '1D'} · "
-                f"Stand: {closes_w.index[-1]:%Y-%m-%d} · Quelle: Yahoo (~15 min)"
-                + (" · RS = IBD-Stil (40/20/20/20-Quartalsgewichtung), "
-                   "Perzentil gegen S&P 500 – Proxy, nicht das offizielle "
-                   "IBD-Rating (das rankt gegen ~7000 Titel)."
-                   if "RS" in tbl.columns else "")
-            )
-            try:
-                rows = ev["selection"]["rows"]
-            except (TypeError, KeyError):
-                rows = []
-            if rows:
-                sym = str(tbl.iloc[rows[0]]["Ticker"])
-                render_detail_chart(sym, sym)
 
 # ----- Tab 4: OvsD (Offensiv vs. Defensiv) -----
 OVSD_UNIVERSE = pd.DataFrame({
@@ -1716,13 +1675,38 @@ if view == "Scanner":
             "AVOL · RS = IBD-Stil gegen alle ~4.400 Titel · ★ = neu in der "
             "gespeicherten Scanner-Liste.")
 
-# ----- Tab: Index-Maps (Finviz-Stil) -----
+# ----- Tab: Stock Map (Index-Konstituenten, Finviz-Stil) -----
 INDEX_FILES = {
     "S&P 500 (All Stocks)": ("idx_sp500.csv", True),
     "Nasdaq 100": ("idx_nasdaq100.csv", True),
     "Dow Jones 30": ("idx_dow.csv", False),
     "Small Caps (S&P 600 als Russell-Proxy)": ("idx_smallcap.csv", True),
 }
+
+# Groessenklassen (Market Cap in US-Dollar), untere Grenze inklusive
+CAP_BUCKETS = {
+    "Small Cap (300 Mio - 2 Mrd)": (3e8, 2e9),
+    "Mid Cap (2 - 10 Mrd)": (2e9, 1e10),
+    "Large Cap (10 - 200 Mrd)": (1e10, 2e11),
+    "Mega Cap (ab 200 Mrd)": (2e11, float("inf")),
+}
+
+
+@st.cache_data(ttl=6 * 3600, show_spinner=False)
+def load_market_caps() -> pd.Series:
+    """Market Caps aus data/universe/master.csv (taeglicher Datenlauf).
+
+    Kein Extra-Abruf bei Yahoo: die Liste entsteht ohnehin fuer den Scanner
+    und deckt S&P 500, Nasdaq und Russell 2000 ab.
+    """
+    path = os.path.join(DATA_DIR, "universe", "master.csv")
+    if not os.path.exists(path):
+        return pd.Series(dtype=float)
+    m = pd.read_csv(path, keep_default_na=False, na_values=[""],
+                    dtype={"Ticker": str})
+    m["Ticker"] = m["Ticker"].str.upper().str.strip()
+    return pd.to_numeric(m.set_index("Ticker")["MarketCap"], errors="coerce")
+
 
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_index_ohlcv(tickers: tuple) -> tuple:
@@ -1734,7 +1718,7 @@ def fetch_index_ohlcv(tickers: tuple) -> tuple:
     return closes, d.get("Volume")
 
 
-if view == "Index-Maps":
+if view == "Stock Map":
     col_sel, col_tf = st.columns([2, 3])
     with col_sel:
         idx_choice = st.selectbox("Index", list(INDEX_FILES.keys()),
@@ -1742,18 +1726,35 @@ if view == "Index-Maps":
     with col_tf:
         tfi = st.radio("Zeitfenster", list(TIMEFRAMES.keys()), horizontal=True,
                        label_visibility="collapsed", key="tf_idx")
+    cap_sel = st.multiselect("Groessenklasse", list(CAP_BUCKETS),
+                             placeholder="Groessenklasse (leer = alle)",
+                             key="idx_caps", label_visibility="collapsed")
 
     fname, use_industry = INDEX_FILES[idx_choice]
     fpath = os.path.join(BASE, fname)
     if not os.path.exists(fpath):
         st.error(f"{fname} fehlt im App-Ordner.")
     elif not st.session_state.get("idx_on"):
-        st.button("Index-Map laden (S&P 500 / Small Caps: ~1-2 Min beim "
+        st.button("Stock Map laden (S&P 500 / Small Caps: ~1-2 Min beim "
                   "ersten Mal, danach 10 min gecacht)", key="idx_btn",
                   on_click=lambda: st.session_state.update(idx_on=True))
     else:
         idx_uni = pd.read_csv(fpath)
         idx_uni["Ticker"] = idx_uni["Ticker"].astype(str).str.upper().str.strip()
+        n_all = len(idx_uni)
+        caps_all = load_market_caps()
+        idx_uni["MarketCap"] = idx_uni["Ticker"].map(caps_all)
+        n_nocap = int(idx_uni["MarketCap"].isna().sum())
+        if cap_sel:
+            # Vor dem Download filtern – spart bei S&P 500 / Small Caps Zeit
+            keep = pd.Series(False, index=idx_uni.index)
+            for b in cap_sel:
+                lo, hi = CAP_BUCKETS[b]
+                keep |= idx_uni["MarketCap"].between(lo, hi, inclusive="left")
+            idx_uni = idx_uni[keep]
+            if idx_uni.empty:
+                st.warning("Kein Titel in dieser Groessenklasse.")
+                st.stop()
         n_titles = len(idx_uni)
         with st.spinner(f"Lade {n_titles} Titel..."):
             closes_i, vol_i = fetch_index_ohlcv(tuple(idx_uni["Ticker"]))
@@ -1821,9 +1822,13 @@ if view == "Index-Maps":
                 if not hit.empty:
                     render_detail_chart(lab, hit["Name"].iloc[0])
             st.caption(
-                f"{idx_choice} · {len(dfi)} Titel · Kachelgroesse = "
-                f"Dollar-Volumen (20T-Schnitt), nicht Market Cap · "
-                f"Stand: {closes_i.index[-1]:%Y-%m-%d} · Quelle: Yahoo. "
+                f"{idx_choice} · {len(dfi)} von {n_all} Titeln"
+                + (f" · Filter: {', '.join(cap_sel)}" if cap_sel else "")
+                + (f" · {n_nocap} ohne Market Cap (nicht filterbar)"
+                   if n_nocap else "")
+                + f" · Kachelgroesse = Dollar-Volumen (20T-Schnitt) · "
+                f"Stand: {closes_i.index[-1]:%Y-%m-%d} · Quelle: Yahoo, "
+                f"Market Cap aus data/universe/master.csv. "
                 f"Konstituenten via Wikipedia-Listen (idx_*.csv, editierbar)."
             )
 
@@ -2334,169 +2339,6 @@ if view == "Kalender":
                     f"nicht offiziell bestaetigt · Quelle: "
                     f"calendar.concretumgroup.com (Concretum Group)."
                 )
-
-# ----- Tab: Gate-Check (Pre-Trade Go/No-Go, Master Playbook Teil 3) -----
-GATE_SECTIONS = [
-    ("A", "Markt-Gates", "hart", [
-        ("A1", "Leitindex (QQQ/SPY) <= 4x ATR-Extension vom 50-MA",
-         "Jeffs SPY-Regel · Verbotszone 4"),
-        ("A2", "Regime-Leiter-Tier erlaubt neues Risiko (Exposure-Budget frei)",
-         "Regime-Leiter v2 + Puffer-Gate"),
-        ("A3", "Kein aktives S1-Schutzregime gegen die Trade-Richtung",
-         "Regel S1-S3"),
-    ]),
-    ("B", "Aktien-Gates", "hart", [
-        ("B1", "Ticker-Zustand erlaubt Entry (SCHARF/TRIGGERED bzw. RO-Trigger "
-               "- nicht Digestion, nicht Fruehwarnung)",
-         "Zustandsmaschine · Verbotszone 6/12"),
-        ("B2", "Kein SPHR-Typ: <= 4 Closes unter 10-MA in 20 Tagen (P2: <= 2)",
-         "Regel Q1/Q2 · Verbotszone 7"),
-        ("B3", "ATR valide - kein Buyout-Pin/ATR-Kollaps (ATR% > 0,5 % des Kurses)",
-         "ATR-Floor G6"),
-    ]),
-    ("C", "Setup-Gates", "hart", [
-        ("C1", "ATR-Ext <= 4x (SmallCap < 500M: <= 5x) - oder Kontext-Schalter "
-               "qualifiziert & dokumentiert (RO-Play)",
-         "Regel E1 · G4 · Verbotszone 1"),
-        ("C2", "ZVR / at-Time-RVOL > 100 % - Volumen bestaetigt JETZT",
-         "Concretum Fig. 4 · Verbotszone 2"),
-        ("C3", "Pivot/Struktur klar definiert (Kompression davor, Level benennbar)",
-         "Regel E3 · KC Schritt 3"),
-    ]),
-    ("D", "Intraday-Gates", "hart", [
-        ("D1", "LoD dist. < 50-60 % 'at time' - bei Buy-Stop: "
-               "(Entry-Stop) / ATR < 50 %", "Regel E2 · Verbotszone 3"),
-        ("D2", "Innerhalb des Execution-Fensters (erste 90 Min)",
-         "Zeitverfall Paper 2/3 · Verbotszone 8"),
-    ]),
-    ("E", "Risiko-Gates", "hart", [
-        ("E1", "Stop <= 1 ATR vom Entry", "Regel E1/K"),
-        ("E2", "Risiko <= 0,25 % (0,33 % nur wenn M3 gruen: Regime oben + "
-               "PF > 3 + unter Kelly-Deckel)", "K3 · M3 · M5 · Journal-Blatt"),
-        ("E3", "Groesse aus Spreadsheet; Kapitalbindung im Budget; "
-               "Position <= 1 % Ø-$-Tagesvolumen",
-         "K1/K2 · Liquidity-Cap · Verbotszone 10"),
-    ]),
-    ("F", "Selbst-Gates", "weich", [
-        ("F1", "Verlustserie < 20 (Aufmerksamkeitszone) - sonst Risiko 0,15 %, "
-               "Frequenz drosseln", "M1 · Monte-Carlo-Baender"),
-        ("F2", "Kein Revenge/FOMO - Trade stand vor heute auf der Liste bzw. "
-               "kommt aus Screen B ∩ SCHARF",
-         "'Earn your next trade' · Verbotszone 12"),
-        ("F3", "Setup-Tag vergeben & T+3-Datum notiert, Management-Alerts "
-               "vorbereitet", "Journal-Tagging · T+3-Protokoll"),
-    ]),
-]
-SETUPS = ["P1 - Kompressions-Breakout", "P2 - Trendfolge-Pullback",
-          "KC - Charakterwechsel", "RO - Repeat-Offender-Slingshot",
-          "S - Schutz/Short-Modul"]
-HARD_TOTAL = sum(len(g) for _, _, t, g in GATE_SECTIONS if t == "hart")
-SOFT_TOTAL = sum(len(g) for _, _, t, g in GATE_SECTIONS if t == "weich")
-
-
-@st.cache_data(ttl=QUOTE_TTL, show_spinner=False)
-def atr_ext_50ma(ticker: str) -> float:
-    """ATR-Extension vom 50-MA: (Close - SMA50) / ATR14."""
-    d = fetch_ohlc(ticker, period="6mo")
-    if d.empty or len(d) < 60:
-        return float("nan")
-    c, h, l = d["Close"], d["High"], d["Low"]
-    tr = pd.concat([h - l, (h - c.shift()).abs(),
-                    (l - c.shift()).abs()], axis=1).max(axis=1)
-    atr = tr.ewm(alpha=1 / 14, adjust=False).mean().iloc[-1]
-    sma50 = c.rolling(50).mean().iloc[-1]
-    return float((c.iloc[-1] - sma50) / atr) if atr else float("nan")
-
-
-if view == "Gate-Check":
-    st.caption("Vor jeder Order. Hartes Gate offen = NO-GO, weiche offen = "
-               "Vorsicht. Keine Speicherung - jeder Trade wird frisch geprueft.")
-    g1, g2, g3 = st.columns([1, 2, 1])
-    with g1:
-        gt_ticker = st.text_input("Ticker", key="gate_ticker",
-                                  placeholder="z.B. PANW").upper().strip()
-    with g2:
-        gt_setup = st.selectbox("Setup-Tag", ["—"] + SETUPS, key="gate_setup")
-    with g3:
-        gt_dir = st.selectbox("Richtung", ["Long", "Short"], key="gate_dir")
-
-    # --- Live-Vorpruefung aus vorhandenen Daten ---
-    hints = {}
-    try:
-        spy_ext = atr_ext_50ma("SPY")
-        qqq_ext = atr_ext_50ma("QQQ")
-        worst = max(abs(spy_ext), abs(qqq_ext))
-        hints["A1"] = (worst <= 4,
-                       f"SPY {spy_ext:+.1f}x · QQQ {qqq_ext:+.1f}x vom 50-MA")
-    except Exception:
-        pass
-    if gt_ticker:
-        try:
-            sg = fetch_signals((gt_ticker,))
-            if not sg.empty:
-                rv = sg.iloc[0]["RVOL_live"]
-                rv = sg.iloc[0]["RVOL_prev"] if pd.isna(rv) else rv
-                ext = atr_ext_50ma(gt_ticker)
-                hints["C2"] = (rv > 1.0, f"{gt_ticker} RVOL {rv:.2f}")
-                hints["C1"] = (abs(ext) <= 4,
-                               f"{gt_ticker} ATR-Ext {ext:+.1f}x vom 50-MA")
-        except Exception:
-            pass
-    if hints:
-        st.caption("Live-Vorpruefung (ersetzt nicht den Haken - die Zahl ist "
-                   "~15 min verzoegert): "
-                   + " · ".join(f"{'✓' if ok else '✗'} {k}: {txt}"
-                                for k, (ok, txt) in sorted(hints.items())))
-
-    # --- Gate-Liste ---
-    checked = {}
-    cols = st.columns(2)
-    for i, (sid, title, typ, gates) in enumerate(GATE_SECTIONS):
-        with cols[i % 2]:
-            st.markdown(f"**{sid} · {title}** "
-                        f"<span style='color:#9fb0e8;font-size:11px'>({typ})</span>",
-                        unsafe_allow_html=True)
-            for gid, text, ref in gates:
-                hint = hints.get(gid)
-                mark = "" if hint is None else ("  ✓" if hint[0] else "  ✗")
-                checked[gid] = st.checkbox(f"**{gid}** {text}{mark}",
-                                           key=f"gate_{gid}")
-                st.caption(ref)
-            st.write("")
-
-    hard_ok = sum(1 for sid, _, t, g in GATE_SECTIONS if t == "hart"
-                  for gid, _, _ in g if checked.get(gid))
-    soft_ok = sum(1 for sid, _, t, g in GATE_SECTIONS if t == "weich"
-                  for gid, _, _ in g if checked.get(gid))
-    open_gates = [gid for _, _, _, g in GATE_SECTIONS
-                  for gid, _, _ in g if not checked.get(gid)]
-
-    if hard_ok < HARD_TOTAL:
-        verdict, vcol = "NO-GO", "#e05a5a"
-        detail = f"{HARD_TOTAL - hard_ok} hartes Gate offen – kein Trade."
-    elif soft_ok < SOFT_TOTAL:
-        verdict, vcol = "VORSICHT", "#ffd166"
-        detail = (f"Alle harten Gates gruen, {SOFT_TOTAL - soft_ok} weiches "
-                  "offen – Size reduzieren oder Begruendung ins Journal.")
-    else:
-        verdict, vcol = "GO", MINT
-        detail = "Alle Gates gruen. Ausfuehren – Groesse kommt aus dem Spreadsheet."
-
-    st.markdown(
-        f"<div style='background:#10182f;border:2px solid {vcol};"
-        f"border-radius:10px;padding:14px 18px;margin-top:6px'>"
-        f"<span style='color:{vcol};font-weight:900;font-size:22px'>{verdict}</span>"
-        f"<span style='color:#cfd6f0;margin-left:14px'>hart {hard_ok}/{HARD_TOTAL}"
-        f" · weich {soft_ok}/{SOFT_TOTAL}</span>"
-        f"<div style='color:#9fb0e8;font-size:13px;margin-top:6px'>{detail}</div>"
-        f"</div>", unsafe_allow_html=True)
-
-    now_de = pd.Timestamp.now(tz="Europe/Berlin")
-    line = (f"{now_de:%d.%m.%Y %H:%M} | {gt_ticker or '—'} | "
-            f"{gt_setup} | {gt_dir} | Gate-Check: {verdict} "
-            f"(hart {hard_ok}/{HARD_TOTAL}, weich {soft_ok}/{SOFT_TOTAL})"
-            + (f" | offen: {','.join(open_gates)}" if open_gates else ""))
-    st.text_input("Journal-Zeile (kopierbar)", value=line, key="gate_line")
 
 # ----- Tab 7: Universum -----
 if view == "Universum":
