@@ -9,6 +9,8 @@
 # =============================================================
 
 import os
+import time
+
 import pandas as pd
 import numpy as np
 import yfinance as yf
@@ -178,7 +180,7 @@ def fetch_sizes(tickers: tuple) -> pd.Series:
     """Market Cap / AUM je Ticker (ein HTTP-Abruf pro Titel).
 
     Sequenziell dauert das bei 50+ Titeln rund 30 Sekunden. Ein kleiner
-    Thread-Pool (8) kuerzt das auf wenige Sekunden und bleibt weit unter dem
+    Thread-Pool (4) kuerzt das auf wenige Sekunden und bleibt weit unter dem
     Thread-Limit der Streamlit-Cloud – anders als yfinance mit einem Thread
     je Ticker.
     """
@@ -194,7 +196,7 @@ def fetch_sizes(tickers: tuple) -> pd.Series:
         except Exception:
             return np.nan
 
-    with ThreadPoolExecutor(max_workers=8) as pool:
+    with ThreadPoolExecutor(max_workers=4) as pool:
         values = list(pool.map(one, tickers))
     return pd.Series(dict(zip(tickers, values)), name="Size")
 
@@ -219,11 +221,19 @@ def bulk_download(tickers: list, period: str, chunk: int = 60,
     parts = {}
     for i in range(0, len(tickers), chunk):
         sub = tickers[i:i + chunk]
-        try:
-            raw = yf.download(sub, period=period, auto_adjust=auto_adjust,
-                              progress=False, group_by="column",
-                              threads=False)
-        except Exception:
+        # Yahoo drosselt Stossabrufe (auf Server-IPs besonders schnell).
+        # Ohne Wiederholung liefert ein einziger Fehlschlag eine leere Tabelle
+        # und die App zeigt grundlos "keine Daten".
+        raw = None
+        for attempt in range(3):
+            try:
+                raw = yf.download(sub, period=period, auto_adjust=auto_adjust,
+                                  progress=False, group_by="column",
+                                  threads=False)
+                break
+            except Exception:
+                time.sleep(2 * (attempt + 1))
+        if raw is None or raw.empty:
             continue
         for field in ["Open", "High", "Low", "Close", "Volume"]:
             if field not in raw:
@@ -610,7 +620,7 @@ def prepare(universe: pd.DataFrame, closes: pd.DataFrame,
             sizes: pd.Series | None, tf: str) -> pd.DataFrame:
     changes = compute_changes(closes)
     df = universe.merge(changes, left_on="Ticker", right_index=True, how="left")
-    if sizes is not None:
+    if sizes is not None and sizes.notna().any():
         df = df.merge(sizes, left_on="Ticker", right_index=True, how="left")
         df["Size"] = df["Size"].fillna(df["Size"].median()).clip(lower=1)
         df["Size"] = np.sqrt(df["Size"])       # Rangfolge bleibt, Kleine lesbar
@@ -618,7 +628,10 @@ def prepare(universe: pd.DataFrame, closes: pd.DataFrame,
         # die Theme-Gruppen -> Broad Market bleibt auf Gruppen-Niveau
         df["Size"] = df["Size"].clip(upper=df["Size"].median() * 2.5)
     else:
-        df["Size"] = 1.0                        # Futures: gleich grosse Kacheln
+        # Futures: gleich grosse Kacheln. Gleiches gilt als Notnagel, wenn
+        # Yahoo keine einzige Market Cap liefert – sonst waeren alle Flaechen
+        # NaN und die Treemap bliebe komplett leer.
+        df["Size"] = 1.0
     missing = df[df[tf].isna()]["Ticker"].tolist()
     if missing:
         st.caption(f"Ohne Daten (ignoriert): {', '.join(missing)}")
@@ -698,11 +711,26 @@ if view == "Aktien / ETF":
             if closes is None:
                 closes = fetch_closes(tickers)
             sizes = fetch_sizes(tickers)
+            if not sizes.notna().any():
+                # Yahoo verweigert die Profil-Abrufe (passiert auf Server-IPs).
+                # Ersatzmass aus dem ohnehin geladenen Kurs-/Volumendownload:
+                # Dollar-Volumen der letzten 20 Tage – sonst bliebe die Karte leer.
+                vol = fetch_bulk(tickers, HISTORY_PERIOD).get("Volume")
+                if vol is not None and not vol.empty:
+                    sizes = (closes.iloc[-20:] * vol.reindex(
+                        index=closes.index, columns=closes.columns
+                    ).iloc[-20:]).mean().rename("Size")
+                st.caption("Market Cap von Yahoo nicht verfuegbar – "
+                           "Kachelgroesse ersatzweise nach Dollar-Volumen "
+                           "(20 Tage).")
         with st.spinner("Berechne RVOL / ATR-Extension..."):
             sig = fetch_signals(tickers)
         df = prepare(universe, closes, sizes, tf)
         if df.empty:
-            st.error("Keine Kursdaten – Ticker pruefen.")
+            st.error("Keine Kursdaten geladen. Meist drosselt Yahoo gerade "
+                     "die Abrufe – in einer Minute nochmal 'Jetzt "
+                     "aktualisieren' druecken. Bleibt es dabei, die Ticker "
+                     "im Tab 'Universum' pruefen.")
         else:
             limit = TIMEFRAMES[tf][1]
             picked = render_treemap(df, tf, limit, key="map_stocks",
