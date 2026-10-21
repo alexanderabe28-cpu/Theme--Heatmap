@@ -88,8 +88,48 @@ def save_csv(df: pd.DataFrame, path: str) -> None:
 
 
 # ---------------- Daten holen ----------------
+IN_CLOUD = os.path.exists("/mount/src")      # Streamlit Community Cloud
+
+
+def ibkr_check(host: str, port: int, timeout: float = 1.5) -> tuple:
+    """Schneller Vorab-Check, warum IBKR (nicht) erreichbar ist.
+
+    Spart den langen ib_async-Timeout und nennt die Ursache beim Namen –
+    die haeufigsten sind: App laeuft in der Cloud, TWS laeuft nicht, oder
+    die Socket-API ist in TWS nicht freigeschaltet.
+    """
+    import socket
+
+    if IN_CLOUD:
+        return False, ("Die App laeuft in der Streamlit-Cloud. TWS/Gateway "
+                       "laeuft auf deinem Rechner und ist von dort nicht "
+                       "erreichbar – IBKR funktioniert nur lokal.")
+    try:
+        import ib_async       # noqa: F401
+    except ImportError:
+        return False, ("Paket ib_async fehlt – installieren mit: "
+                       ".venv\\Scripts\\pip install ib_async")
+    try:
+        with socket.create_connection((host, int(port)), timeout):
+            return True, f"Port {port} auf {host} ist offen."
+    except OSError as e:
+        return False, (
+            f"Keine Verbindung zu {host}:{port} "
+            f"({getattr(e, 'strerror', None) or e}). "
+            "Pruefen: TWS bzw. IB Gateway gestartet und eingeloggt? Unter "
+            "Einstellungen -> API -> Settings 'Enable ActiveX and Socket "
+            "Clients' aktiv? Port richtig (7496 live, 7497 Paper, 4001/4002 "
+            "Gateway)?")
+
+
+@st.cache_data(ttl=QUOTE_TTL, show_spinner=False)
 def fetch_closes_ibkr(tickers: tuple, host: str, port: int, client_id: int) -> pd.DataFrame:
-    """Daily Closes ueber TWS/IB Gateway (nur US-Aktien/ETFs)."""
+    """Daily Closes ueber TWS/IB Gateway (nur US-Aktien/ETFs).
+
+    Ein reqHistoricalData-Aufruf je Ticker. IBKR deckelt das auf rund 60
+    Abrufe je 10 Minuten – darum gecacht, sonst laeuft jeder Rerun in die
+    Pacing-Sperre.
+    """
     from ib_async import IB, Stock, util
     ib = IB()
     ib.connect(host, port, clientId=client_id, timeout=6)
@@ -597,6 +637,11 @@ with st.sidebar:
         ib_host = st.text_input("Host", "127.0.0.1")
         ib_port = st.number_input("Port (7496 live / 7497 paper)", value=7496, step=1)
         ib_cid = st.number_input("Client-ID", value=17, step=1)
+        ok_ib, msg_ib = ibkr_check(ib_host, int(ib_port))
+        (st.success if ok_ib else st.warning)(msg_ib)
+        st.caption("IBKR: max. ~60 Abrufe je 10 Minuten. Grosse Universen "
+                   "laufen in die Pacing-Sperre – Ergebnis wird 5 Minuten "
+                   "zwischengespeichert.")
     st.caption("Futures/Makro laufen immer ueber Yahoo.")
     st.subheader("Auto-Refresh")
     interval = st.selectbox("Intervall", ["Aus", "60 s", "5 min", "15 min"], index=0,
@@ -632,7 +677,11 @@ if view == "Aktien / ETF":
         tickers = tuple(universe["Ticker"])
         with st.spinner("Lade Kurse..."):
             closes = None
-            if use_ibkr:
+            if use_ibkr and not ok_ib:
+                # Portcheck ist schon durchgefallen – gar nicht erst verbinden
+                st.warning(f"IBKR uebersprungen: {msg_ib} Daten kommen von "
+                           "Yahoo (~15 min).")
+            elif use_ibkr:
                 try:
                     closes = fetch_closes_ibkr(tickers, ib_host, int(ib_port), int(ib_cid))
                     skipped = [t for t in tickers if t not in closes.columns]
@@ -641,7 +690,11 @@ if view == "Aktien / ETF":
                         st.sidebar.caption(f"Yahoo-Fallback: {', '.join(skipped)}")
                         closes = closes.join(fetch_closes(tuple(skipped)), how="outer")
                 except Exception as e:
-                    st.sidebar.error(f"IBKR nicht erreichbar ({e}) – Fallback Yahoo.")
+                    st.error(f"IBKR-Abruf fehlgeschlagen ({type(e).__name__}: "
+                             f"{e}). Haeufig: Client-ID {int(ib_cid)} schon in "
+                             "Benutzung, Pacing-Sperre (zu viele Abrufe) oder "
+                             "fehlende Marktdaten-Berechtigung. Daten kommen "
+                             "von Yahoo (~15 min).")
             if closes is None:
                 closes = fetch_closes(tickers)
             sizes = fetch_sizes(tickers)
