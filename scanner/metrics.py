@@ -11,6 +11,13 @@ Alle Kennzahlen je Handelstag. Definitionen:
     p_ab20..200    % der Titel ueber SMA20/40/50/200 (p_ab40 = T2108)
     p_stack        % mit EMA10 > EMA20 > SMA50
     p_s1..p_s4     Weinstein-Stages (SMA200 + 20-Tage-Steigung)
+    p_up_open      % mit Close ueber Eroeffnung ("Open Chg")
+    p_up_1w..1y    % mit positiver Performance ueber 5/21/63/126/252 Tage
+    p_ab_e10/e20   % ueber EMA10 / EMA20
+    p_e10_ge_e20, p_s20_ge_s50, p_s50_ge_s200, p_full_stack
+                   % mit der jeweiligen MA-Reihenfolge (full = SMA20>=50>=200)
+    nh20/nl20      neues 20-Tage-Hoch/-Tief (exkl. heute)
+    p_range20_hi   % in der oberen Haelfte der 20-Tage-Spanne
 """
 import numpy as np
 import pandas as pd
@@ -24,12 +31,21 @@ def compute_indicators(px: dict) -> dict:
     V = px["Volume"].where(~gap, 0.0)
     prev = C.shift(1)
 
-    ind = {"C": C, "H": H, "L": L, "V": V}
+    O = px["Open"].where(~gap, C).fillna(C) if "Open" in px else C.shift(1)
+
+    ind = {"C": C, "H": H, "L": L, "V": V, "O": O}
     ind["chg"] = C / prev - 1
+    ind["chg_open"] = C / O - 1               # "Open Chg": Close gegen Eroeffnung
     for n in (20, 40, 50, 200):
         ind[f"sma{n}"] = C.rolling(n, min_periods=n).mean()
     for n in (10, 20):
         ind[f"ema{n}"] = C.ewm(span=n, adjust=False, min_periods=n).mean()
+    # 20-Tage-Extreme: exkl. heute fuer "neues Hoch/Tief", inkl. heute fuer
+    # die Lage des Kurses in der 20-Tage-Spanne
+    ind["hi20"] = H.shift(1).rolling(20, min_periods=20).max()
+    ind["lo20"] = L.shift(1).rolling(20, min_periods=20).min()
+    ind["hi20i"] = H.rolling(20, min_periods=20).max()
+    ind["lo20i"] = L.rolling(20, min_periods=20).min()
 
     tr = np.fmax(np.fmax((H - L).to_numpy(), (H - prev).abs().to_numpy()),
                  (L - prev).abs().to_numpy())
@@ -40,7 +56,7 @@ def compute_indicators(px: dict) -> dict:
     ind["dvol20"] = (C * V).rolling(20, min_periods=20).mean()
     ind["hi252"] = H.shift(1).rolling(252, min_periods=252).max()
     ind["lo252"] = L.shift(1).rolling(252, min_periods=252).min()
-    for n in (21, 34, 63, 65, 126):
+    for n in (5, 21, 34, 63, 65, 126, 252):
         ind[f"ret{n}"] = C / C.shift(n) - 1
     ind["slope200"] = ind["sma200"] / ind["sma200"].shift(20) - 1
     return ind
@@ -93,6 +109,23 @@ def breadth(ind: dict, cols: list, mask: pd.DataFrame | None = None) -> pd.DataF
                        g["sma50"].notna()),
         "p_s1": pct(s1, sv), "p_s2": pct(s2, sv),
         "p_s3": pct(s3, sv), "p_s4": pct(s4, sv),
+        # --- Market-Metrics-Block (Steve Jacobs, "Market Metrics - Summary") ---
+        "p_up_open": pct(g["chg_open"] > 0, g["chg_open"].notna()),
+        "p_up_1w": pct(g["ret5"] > 0, g["ret5"].notna()),
+        "p_up_1m": pct(g["ret21"] > 0, g["ret21"].notna()),
+        "p_up_3m": pct(g["ret63"] > 0, g["ret63"].notna()),
+        "p_up_6m": pct(g["ret126"] > 0, g["ret126"].notna()),
+        "p_up_1y": pct(g["ret252"] > 0, g["ret252"].notna()),
+        "p_ab_e10": pct(C > g["ema10"], g["ema10"].notna()),
+        "p_ab_e20": pct(C > g["ema20"], g["ema20"].notna()),
+        "p_e10_ge_e20": pct(g["ema10"] >= g["ema20"], g["ema20"].notna()),
+        "p_s20_ge_s50": pct(g["sma20"] >= g["sma50"], g["sma50"].notna()),
+        "p_s50_ge_s200": pct(g["sma50"] >= g["sma200"], g["sma200"].notna()),
+        "p_full_stack": pct((g["sma20"] >= g["sma50"]) & (g["sma50"] >= g["sma200"]),
+                            g["sma200"].notna()),
+        "nh20": cnt(C > g["hi20"]), "nl20": cnt(C < g["lo20"]),
+        "p_range20_hi": pct((C - g["lo20i"]) >= 0.5 * (g["hi20i"] - g["lo20i"]),
+                            g["hi20i"].notna() & (g["hi20i"] > g["lo20i"])),
     })
     out.index.name = "date"
     return out
@@ -105,7 +138,7 @@ def weekly(daily: pd.DataFrame, ind: dict, cols: list,
     cols = [c for c in cols if c in ind["C"].columns]
     wk = daily.index.to_period("W-FRI")
     level_cols = [c for c in daily.columns if c.startswith("p_")] + ["n"]
-    sum_cols = ["up_vol", "dn_vol", "up4", "dn4", "nh", "nl"]
+    sum_cols = ["up_vol", "dn_vol", "up4", "dn4", "nh", "nl", "nh20", "nl20"]
     last_cols = ["up25q", "dn25q", "up13_34", "dn13_34"]
     agg = daily.groupby(wk).agg(
         {**{c: "last" for c in level_cols + last_cols},

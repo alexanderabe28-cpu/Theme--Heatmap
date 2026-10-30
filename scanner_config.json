@@ -2,6 +2,7 @@
   "_hinweis": "Scanner-Kriterien fuer die eigene Universumsliste. null = Filter aus. Aenderungen hier im Repo gelten ab dem naechsten taeglichen Lauf.",
   "min_price": 5,
   "min_market_cap": 300000000,
+  "min_industry_rs": 50,
   "min_avol": 500000,
   "min_rvol": null,
   "min_atr_pct": 2.5,

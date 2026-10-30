@@ -19,7 +19,7 @@ import os
 
 import pandas as pd
 
-from . import DATA_DIR, SCAN_DIR
+from . import DATA_DIR, ROOT, SCAN_DIR
 from . import metrics, prices, scan, universe
 
 BENCHMARKS = ["SPY", "QQQ", "IWM"]
@@ -27,11 +27,25 @@ WARMUP_DAYS = 420          # Kalendertage fuer SMA200 + 20T-Steigung + 52W-Hoch
 DAILY_KEEP = 15            # Tageslauf: letzte N Handelstage neu schreiben
 UNIVERSES = {
     "sp500": "S&P 500",
+    "ndx": "Nasdaq 100",
+    "dow": "Dow Jones 30",
+    "core": "S&P 500 + Nasdaq 100 + Dow",
     "nasdaq": "Nasdaq Composite",
     "r2000": "Russell 2000",
+    "cap1b": "Market Cap ab 1 Mrd $",
     "all": "Gesamt",
     "scan": "Scanner-Liste",
 }
+INDEX_LISTS = {"ndx": "idx_nasdaq100.csv", "dow": "idx_dow.csv"}
+
+
+def index_tickers(name: str) -> list:
+    """Konstituenten aus den idx_*.csv im Repo (gleiche Listen wie die App)."""
+    path = os.path.join(ROOT, INDEX_LISTS[name])
+    if not os.path.exists(path):
+        return []
+    df = universe.read_tickers_csv(path)
+    return [universe.yahoo_symbol(t) for t in df["Ticker"]]
 
 
 def merge_csv(path: str, new: pd.DataFrame, keys: list) -> pd.DataFrame:
@@ -57,11 +71,16 @@ def main() -> None:
     if args.limit:
         master = master.sample(n=min(args.limit, len(master)), random_state=1)
     tickers = master["Ticker"].tolist()
+    # Nasdaq 100 / Dow liegen als Listen im Repo; was dort steht, aber nicht
+    # im Master ist (z.B. Nicht-US-ADR), wird mitgeladen
+    idx_sets = {k: set(index_tickers(k)) for k in INDEX_LISTS}
+    extra = sorted(set().union(*idx_sets.values()) - set(tickers)) if not args.limit else []
+    tickers_dl = tickers + extra
 
     days = WARMUP_DAYS + int(args.backfill_years * 365)
     start = (pd.Timestamp.today() - pd.Timedelta(days=days)).strftime("%Y-%m-%d")
     print(f"[run] {len(tickers)} Titel ab {start}")
-    px = prices.download(tickers + BENCHMARKS, start)
+    px = prices.download(tickers_dl + BENCHMARKS, start)
     failed = px.pop("failed")
     now_et = pd.Timestamp.now(tz="America/New_York")
     if (px["Close"].index[-1].date() == now_et.date()
@@ -72,12 +91,28 @@ def main() -> None:
 
     ind = metrics.compute_indicators(px)
     cfg = scan.load_config()
+
+    # Industrie-RS ("One Rule") vor dem Scan: fliesst als Filter und als
+    # Spalte in den Snapshot ein
+    ind_tbl, ind_per_ticker = scan.industry_rs(ind, master)
+    master = master.merge(ind_per_ticker.rename("IndRS"), left_on="Ticker",
+                          right_index=True, how="left")
+    ind_tbl.reset_index().to_csv(os.path.join(DATA_DIR, "industry_rs.csv"),
+                                 index=False)
+    print(f"[run] Industrie-RS: {len(ind_tbl)} Industrien mit >= 3 Titeln")
+
     mask = scan.scan_mask(ind, master, cfg)
 
+    sp500 = master.loc[master["SP500"], "Ticker"].tolist()
+    ndx, dow = sorted(idx_sets["ndx"]), sorted(idx_sets["dow"])
     groups = {
-        "sp500": master.loc[master["SP500"], "Ticker"].tolist(),
+        "sp500": sp500,
+        "ndx": ndx,
+        "dow": dow,
+        "core": sorted(set(sp500) | set(ndx) | set(dow)),
         "nasdaq": master.loc[master["NASDAQ"], "Ticker"].tolist(),
         "r2000": master.loc[master["R2000"], "Ticker"].tolist(),
+        "cap1b": master.loc[master["MarketCap"] >= 1e9, "Ticker"].tolist(),
         "all": tickers,
     }
     dates = ind["C"].index
@@ -140,6 +175,7 @@ def main() -> None:
         "tickers_loaded": int(px["Close"].columns.isin(tickers).sum()),
         "tickers_failed": len(failed),
         "scan_hits": int(hits.sum()),
+        "industries_ranked": int(len(ind_tbl)),
         "scan_config": cfg,
         "r2000_source": str(master["R2000_Source"].iloc[0]),
         "universe_updated": str(master["Updated"].iloc[0]),

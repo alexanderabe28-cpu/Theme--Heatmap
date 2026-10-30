@@ -84,7 +84,41 @@ def scan_mask(ind: dict, master: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     if cfg.get("min_market_cap"):
         cap = master.set_index("Ticker")["MarketCap"].reindex(C.columns)
         m.loc[:, ~(cap >= cfg["min_market_cap"]).to_numpy()] = False
+    # "One Rule": nur Titel aus fuehrenden Industrien (Industrie-RS-Perzentil).
+    # Wie die Market Cap ein heutiger Wert – rueckwirkend nicht historisch.
+    if cfg.get("min_industry_rs") and "IndRS" in master.columns:
+        irs = master.set_index("Ticker")["IndRS"].reindex(C.columns)
+        m.loc[:, ~(irs >= cfg["min_industry_rs"]).to_numpy()] = False
     return m
+
+
+def industry_rs(ind: dict, master: pd.DataFrame, min_n: int = 3) -> tuple:
+    """Relative Staerke je Industrie (Steve Jacobs' "One Rule").
+
+    Je Industrie der Median der Mitglieder-Performance ueber 1W/1M/3M/6M/1Y,
+    jeweils als Perzentilrang 1-99 ueber alle Industrien. Composite = Mittel
+    der Raenge 1W/1M/3M/6M (das Jahr bleibt als Info), daraus IndRS 1-99.
+    Rueckgabe: (Tabelle je Industrie, IndRS je Ticker).
+    """
+    C = ind["C"]
+    last = {w: ind[f"ret{n}"].iloc[-1] for w, n in
+            (("1W", 5), ("1M", 21), ("3M", 63), ("6M", 126), ("1Y", 252))}
+    meta = master.set_index("Ticker")[["Sector", "Industry"]].reindex(C.columns)
+    rows = pd.DataFrame(last).join(meta)
+    rows = rows[rows["Industry"].notna() & (rows["Industry"] != "Unknown")]
+    grp = rows.groupby("Industry")
+    tbl = grp[["1W", "1M", "3M", "6M", "1Y"]].median()
+    tbl["n"] = grp.size()
+    tbl["Sector"] = grp["Sector"].agg(lambda s: s.mode().iloc[0] if len(s) else "")
+    tbl = tbl[tbl["n"] >= min_n]
+    for w in ("1W", "1M", "3M", "6M", "1Y"):
+        tbl[f"rs_{w}"] = (tbl[w].rank(pct=True) * 98 + 1).round()
+    comp = tbl[["rs_1W", "rs_1M", "rs_3M", "rs_6M"]].mean(axis=1)
+    tbl["IndRS"] = (comp.rank(pct=True) * 98 + 1).round()
+    tbl = tbl.sort_values("IndRS", ascending=False)
+    tbl.index.name = "Industry"
+    per_ticker = rows["Industry"].map(tbl["IndRS"])
+    return tbl, per_ticker
 
 
 def snapshot(ind: dict, master: pd.DataFrame) -> pd.DataFrame:
@@ -127,8 +161,8 @@ def snapshot(ind: dict, master: pd.DataFrame) -> pd.DataFrame:
         "FromHigh%": (last["C"] / hi - 1) * 100,
     })
     snap.index.name = "Ticker"
-    meta = master.set_index("Ticker")[
-        ["Name", "Exchange", "Sector", "Industry", "MarketCap",
-         "SP500", "NASDAQ", "R2000"]]
+    cols = ["Name", "Exchange", "Sector", "Industry", "MarketCap",
+            "SP500", "NASDAQ", "R2000"] + (["IndRS"] if "IndRS" in master else [])
+    meta = master.set_index("Ticker")[cols]
     snap = meta.join(snap, how="inner").reset_index()
     return snap[snap["Price"].notna()]

@@ -208,3 +208,79 @@ auch `compute_ibd_rs`, `fetch_universe_ohlcv` und `compute_breadth`
 ueberfluessig (Letzteres war seit dem Breadth-Umbau ohnehin tot).
 `watchlist.csv` und `rs_universe.csv` bleiben im Repo, werden aber nicht
 mehr gelesen.
+
+# Swing-Trading-Ansatz (nach Steve Jacobs' Praesentation, Okt. 2026)
+
+Aus der Praesentation "Swing Trading Approach" sind vier Bausteine in die
+App eingeflossen. Alles davon laeuft ueber den Nachtlauf bzw. den normalen
+Yahoo-Abruf – kein neuer Datenlieferant.
+
+## Market Metrics und Breadth-Score (Breadth-Tab)
+
+Der Nachtlauf liefert jetzt die Kennzahlen der Folie "Market Metrics -
+Summary" je Universum: Anteil ueber Eroeffnung, positive Performance ueber
+Woche/Monat/Quartal/Halbjahr/Jahr, Kurs zu EMA10/EMA20/SMA20/SMA50/SMA200,
+MA-Reihenfolgen (EMA10 >= EMA20, SMA20 >= SMA50, SMA50 >= SMA200, volle
+Reihe), neue 20-Tage-Hochs/-Tiefs und Lage in der 20-Tage-Spanne. Neue
+Universen: Nasdaq 100 (= QQQE-Logik), Dow Jones 30, S&P 500 + Nasdaq 100 +
+Dow und "Market Cap ab 1 Mrd $" (Jacobs' $1B+-Universum). Die Listen fuer
+Nasdaq 100 und Dow kommen aus `idx_nasdaq100.csv` / `idx_dow.csv`.
+
+Oben im Breadth-Tab stehen vier Score-Karten wie auf der Folie (Nasdaq 100,
+S&P 500, Kern, $1B+) plus ein Vorschlag fuers Risiko je Trade.
+**Der Score ist eine eigene Konstruktion** – Jacobs veroeffentlicht seine
+Formel nicht: Mittel aus % ueber EMA10, EMA20, SMA50, SMA200, EMA10 >= EMA20,
+SMA50 >= SMA200, Monat positiv und obere Haelfte der 20-Tage-Spanne, 0-100.
+Ab 60 Risk-on (volle Vorgabe), 40-60 neutral (halbe), unter 40 Risk-off
+(ein Viertel). Die Vorgabe (Standard 1,00 %) ist im Tab einstellbar. Die
+komplette Above/Below-Tabelle der Folie steht im Aufklappbereich "Market
+Metrics".
+
+## Industrie-RS – "One Rule To Rule Them All" (Scanner)
+
+Jacobs' wichtigster Backtest-Befund: Jede Strategie wurde 2011-2026 in jedem
+Jahr besser, wenn nur Titel aus der oberen Haelfte der Industrien nach
+relativer Staerke zugelassen waren. Der Nachtlauf berechnet dafuer je
+Industrie (Zuordnung aus `data/universe/master.csv`, mindestens 3 Titel) den
+Median der Mitglieder-Performance ueber 1W/1M/3M/6M/1Y, rankt jede Spalte als
+Perzentil 1-99 ueber alle Industrien und bildet daraus Ind-RS (Mittel der
+Raenge 1W/1M/3M/6M, erneut gerankt). Ergebnis in `data/industry_rs.csv`,
+je Titel als Spalte `IndRS` im Snapshot.
+
+`scanner_config.json` hat dafuer `min_industry_rs`, **Standard 50** – also
+genau Jacobs' Regel. Damit aendert sich die gespeicherte Scanner-Liste.
+Wer das nicht will, setzt den Wert auf null. Im Scanner-Tab gibt es den
+Filter "Industrie-RS min", die Spalte "Ind-RS" und die Industrie-Tabelle im
+Aufklappbereich. Wie die Market Cap ist der Industrie-RS ein heutiger Wert;
+die Scanner-Historie ist rueckwirkend nicht danach gefiltert.
+
+## Stage-Analyse mit Jacobs' Unterphasen (Sector-Map, Stock Map)
+
+Die Unterphasen heissen jetzt wie in der Praesentation und folgen messbaren
+Regeln: 1A Upward Pivot, 1B Mean Reversion (ueber SMA50), 2A Bullish Trend,
+2B Breakout Confirm (neues 20-Tage-Hoch), 2C Extended Bullish (>= 3 ATR ueber
+EMA10), 3A Bullish Fade (haelt SMA50), 3B Fade Confirmation, 4A Bearish
+Trend, 4B Breakdown Confirm (neues 20-Tage-Tief), 4C Extended Bearish.
+Hauptstufe unveraendert nach Weinstein. Bullish = Stage 1 + 2.
+
+Unter der Sector-Map und der Stock Map steht das Dashboard der Folien
+"Stage Analysis": Verteilung je Unterphase, Bullish/Bearish-Balken und je
+Unterphase die Titel mit 1D %. Die Stock Map laedt dafuer 2 Jahre statt 6
+Monate (SMA200) und hat einen Stage-Filter – Jacobs' "Watchable" waeren
+z.B. die Stages 1A bis 2B.
+
+## Sektor-Rotation (Sector-Map)
+
+Wie auf der Folie "Sector Relative Strength": die 11 SPDR-Sektoren als
+Perzentilrang ihrer Wochen- (5 Tage) gegen Monatsperformance (21 Tage),
+Quadranten Strong / Improving / Weakening / Weak. Jacobs' Hinweis dazu:
+Strong schlaegt Improving – "leading stocks in leading groups".
+
+## Nicht umgesetzt
+
+Entry-Regeln (Kauf zum Schluss, Pilot-Position, Scale-in), Stops und
+Gewinnmitnahme ab 7x ATR vom SMA50 sind Handelsregeln, keine App-Funktion;
+die 7x-Schwelle steckt bereits in der Ampel des Theme Trackers.
+Backtesting, Modelling und Pinescreener liegen ausserhalb einer
+Streamlit-Anzeige. Candle-Faerbung nach Stage im Detail-Chart waere der
+naechste sinnvolle Schritt.
