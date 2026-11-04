@@ -1,49 +1,59 @@
 Ticker,Name,Sector,Industry
+A,Agilent Technologies Inc.,Industrials,Biotechnology: Laboratory Analytical Instruments
 AMT,American Tower Corporation (REIT),Real Estate,Real Estate Investment Trusts
+BBT,Beacon Financial Corporation Common stock,Finance,Banks
 BLLN,BillionToOne Inc.,Health Care,Medical Specialities
 BLMN,Bloomin' Brands Inc.,Consumer Discretionary,Restaurants
-BTSG,BrightSpring Health Services Inc.,Health Care,Medical/Nursing Services
-BUUU,BUUU Group Limited Class A Ordinary Share,Consumer Discretionary,Services-Misc. Amusement & Recreation
 CAI,Caris Life Sciences Inc.,Health Care,Medical Specialities
-CAKE,Cheesecake Factory Incorporated (The),Consumer Discretionary,Restaurants
-CI,The Cigna Group,Health Care,Medical Specialities
 COKE,Coca-Cola Consolidated Inc.,Consumer Staples,Beverages (Production/Distribution)
+COLD,Americold Realty Trust Inc.,Real Estate,Real Estate Investment Trusts
 COP,ConocoPhillips,Energy,Integrated oil Companies
 CRL,Charles River Laboratories International Inc.,Health Care,Biotechnology: Commercial Physical & Biological Resarch
 CTKB,Cytek Biosciences Inc.,Industrials,Biotechnology: Laboratory Analytical Instruments
-DVA,DaVita Inc.,Health Care,Misc Health and Biotechnology Services
+DAL,Delta Air Lines Inc.,Consumer Discretionary,Air Freight/Delivery Services
+DGX,Quest Diagnostics Incorporated,Health Care,Medical Specialities
 EBAY,eBay Inc.,Consumer Discretionary,Business Services
 ENTG,Entegris Inc.,Industrials,Plastic Products
-EOG,EOG Resources Inc.,Energy,Oil & Gas Production
-EPC,Edgewell Personal Care Company,Consumer Discretionary,Package Goods/Cosmetics
 EW,Edwards Lifesciences Corporation,Health Care,Industrial Specialties
 FLYW,Flywire Corporation Voting,Consumer Discretionary,Business Services
 FOSL,Fossil Group Inc.,Consumer Discretionary,Consumer Specialties
 FTDR,Frontdoor Inc.,Consumer Discretionary,Diversified Commercial Services
-GO,Grocery Outlet Holding Corp.,Consumer Staples,Food Chains
+GH,Guardant Health Inc.,Health Care,Medical Specialities
+GPN,Global Payments Inc.,Consumer Discretionary,Business Services
+GRAL,GRAIL Inc. Common Stock ,Health Care,Medical Specialities
 HNI,HNI Corporation,Consumer Discretionary,Office Equipment/Supplies/Services
 HQY,HealthEquity Inc.,Consumer Discretionary,Business Services
+HUM,Humana Inc.,Health Care,Medical Specialities
+IRM,Iron Mountain Incorporated (Delaware)Common Stock REIT,Real Estate,Real Estate Investment Trusts
+KDP,Keurig Dr Pepper Inc.,Consumer Staples,Beverages (Production/Distribution)
 KTB,Kontoor Brands Inc. Common Stock ,Industrials,Garments and Clothing
 LFST,LifeStance Health Group Inc.,Health Care,Medical/Nursing Services
 LH,Labcorp Holdings Inc.,Health Care,Medical Specialities
+LIVN,LivaNova PLC,Health Care,Biotechnology: Electromedical & Electrotherapeutic Apparatus
 NUE,Nucor Corporation,Industrials,Steel/Iron Ore
 OABI,OmniAb Inc.,Health Care,Biotechnology: Commercial Physical & Biological Resarch
 PDM,Piedmont Realty Trust Inc.,Real Estate,Building operators
 PGNY,Progyny Inc.,Health Care,Misc Health and Biotechnology Services
 PK,Park Hotels & Resorts Inc. Common Stock ,Consumer Discretionary,Hotels/Resorts
 RELY,Remitly Global Inc.,Consumer Discretionary,Business Services
-RHI,Robert Half Inc.,Consumer Discretionary,Professional Services
-RL,Ralph Lauren Corporation,Industrials,Garments and Clothing
-RNST,Renasant Corporation,Finance,Major Banks
+RVTY,Revvity Inc.,Industrials,Biotechnology: Laboratory Analytical Instruments
 SBH,Sally Beauty Holdings Inc. (Name to be changed from Sally Holdings Inc.),Consumer Discretionary,Other Specialty Stores
 SLDE,Slide Insurance Holdings Inc.,Finance,Property-Casualty Insurers
 STLD,Steel Dynamics Inc.,Industrials,Steel/Iron Ore
+SWIM,Latham Group Inc.,Industrials,Plastic Products
 SXC,SunCoke Energy Inc.,Industrials,Steel/Iron Ore
 TREX,Trex Company Inc.,Basic Materials,Forest Products
-UNFI,United Natural Foods Inc.,Consumer Discretionary,Food Distributors
+TRGP,Targa Resources Inc.,Utilities,Natural Gas Distribution
+TRMD,TORM plc,Consumer Discretionary,Marine Transportation
+ULCC,Frontier Group Holdings Inc.,Consumer Discretionary,Air Freight/Delivery Services
+UNH,UnitedHealth Group Incorporated Common Stock (DE),Health Care,Medical Specialities
 URBN,Urban Outfitters Inc.,Consumer Discretionary,Clothing/Shoe/Accessory Stores
+VCTR,Victory Capital Holdings Inc.,Finance,Investment Managers
 VCYT,Veracyte Inc.,Health Care,Medical Specialities
 VSTS,Vestis Corporation,Consumer Discretionary,Consumer Specialties
 VVX,V2X Inc.,Consumer Discretionary,Diversified Commercial Services
+WAT,Waters Corporation,Industrials,Biotechnology: Laboratory Analytical Instruments
+WMB,Williams Companies Inc. (The),Utilities,Natural Gas Distribution
 WSM,Williams-Sonoma Inc. Common Stock (DE),Consumer Discretionary,Home Furnishings
 WWW,Wolverine World Wide Inc.,Consumer Discretionary,Shoe Manufacturing
+XMTR,Xometry Inc.,Consumer Discretionary,Business Services
