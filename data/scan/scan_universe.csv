@@ -1,48 +1,41 @@
 Ticker,Name,Sector,Industry
 ABNB,Airbnb Inc.,Consumer Discretionary,Diversified Commercial Services
-AJG,Arthur J. Gallagher & Co.,Finance,Specialty Insurers
-ALL,Allstate Corporation (The),Finance,Property-Casualty Insurers
-AMPL,Amplitude Inc.,Technology,Computer Software: Prepackaged Software
+ACCO,Acco Brands Corporation,Consumer Discretionary,Publishing
+AMT,American Tower Corporation (REIT),Real Estate,Real Estate Investment Trusts
 AMZN,Amazon.com Inc.,Consumer Discretionary,Catalog/Specialty Distribution
 APA,APA Corporation,Energy,Oil & Gas Production
 ASH,Ashland Inc.,Consumer Discretionary,Specialty Chemicals
 ASPN,Aspen Aerogels Inc.,Consumer Discretionary,RETAIL: Building Materials
-AVPT,AvePoint Inc.,Technology,Computer Software: Prepackaged Software
 BALL,Ball Corporation,Industrials,Containers/Packaging
 BBT,Beacon Financial Corporation Common stock,Finance,Banks
 BEN,Franklin Templeton Inc.,Finance,Investment Managers
-BLLN,BillionToOne Inc.,Health Care,Medical Specialities
 BLMN,Bloomin' Brands Inc.,Consumer Discretionary,Restaurants
 BRKR,Bruker Corporation,Industrials,Biotechnology: Laboratory Analytical Instruments
 CALY,Callaway Golf Company,Consumer Discretionary,Recreational Games/Products/Toys
+CBRL,Cracker Barrel Old Country Store Inc,Consumer Discretionary,Restaurants
 CDNA,CareDx Inc.,Health Care,Medical Specialities
-CDNS,Cadence Design Systems Inc.,Technology,Computer Software: Prepackaged Software
 CDW,CDW Corporation,Consumer Discretionary,Catalog/Specialty Distribution
 CHH,Choice Hotels International Inc.,Consumer Discretionary,Hotels/Resorts
 CNC,Centene Corporation,Health Care,Medical Specialities
 CNK,Cinemark Holdings Inc Cinemark Holdings Inc.,Consumer Discretionary,Movies/Entertainment
 CNNE,Cannae Holdings Inc.,Consumer Discretionary,Restaurants
 COCO,The Vita Coco Company Inc.,Consumer Staples,Beverages (Production/Distribution)
-CPAY,Corpay Inc.,Consumer Discretionary,Business Services
+COKE,Coca-Cola Consolidated Inc.,Consumer Staples,Beverages (Production/Distribution)
+COP,ConocoPhillips,Energy,Integrated oil Companies
 CRL,Charles River Laboratories International Inc.,Health Care,Biotechnology: Commercial Physical & Biological Resarch
-CVLT,Commvault Systems Inc.,Technology,Computer Software: Prepackaged Software
+CTKB,Cytek Biosciences Inc.,Industrials,Biotechnology: Laboratory Analytical Instruments
 DAL,Delta Air Lines Inc.,Consumer Discretionary,Air Freight/Delivery Services
-DOCU,DocuSign Inc.,Technology,Computer Software: Prepackaged Software
-DRI,Darden Restaurants Inc.,Consumer Discretionary,Restaurants
+DLTR,Dollar Tree Inc.,Consumer Discretionary,Department/Specialty Retail Stores
+DRH,Diamondrock Hospitality Company,Real Estate,Real Estate Investment Trusts
 EBAY,eBay Inc.,Consumer Discretionary,Business Services
 ELV,Elevance Health Inc.,Health Care,Medical Specialities
 EMR,Emerson Electric Company,Technology,Consumer Electronics/Appliances
 EOG,EOG Resources Inc.,Energy,Oil & Gas Production
-EPC,Edgewell Personal Care Company,Consumer Discretionary,Package Goods/Cosmetics
-FDX,FedEx Corporation,Consumer Discretionary,Air Freight/Delivery Services
+EQIX,Equinix Inc. Common Stock REIT,Real Estate,Real Estate Investment Trusts
 FHI,Federated Hermes Inc.,Finance,Investment Managers
 FIVE,Five Below Inc.,Consumer Discretionary,Department/Specialty Retail Stores
-FLYW,Flywire Corporation Voting,Consumer Discretionary,Business Services
 FNKO,Funko Inc.,Consumer Discretionary,Recreational Games/Products/Toys
-FROG,JFrog Ltd.,Technology,Computer Software: Prepackaged Software
-FTDR,Frontdoor Inc.,Consumer Discretionary,Diversified Commercial Services
 GCT,GigaCloud Technology Inc Class A,Consumer Discretionary,Catalog/Specialty Distribution
-GEN,Gen Digital Inc.,Technology,Computer Software: Prepackaged Software
 GIII,G-III Apparel Group LTD.,Consumer Discretionary,Apparel
 HASI,HA Sustainable Infrastructure Capital Inc.,Finance,Finance/Investors Services
 HCSG,Healthcare Services Group Inc.,Health Care,Hospital/Nursing Management
@@ -50,46 +43,38 @@ HNI,HNI Corporation,Consumer Discretionary,Office Equipment/Supplies/Services
 HQY,HealthEquity Inc.,Consumer Discretionary,Business Services
 HTO,H2O America,Utilities,Water Supply
 HUM,Humana Inc.,Health Care,Medical Specialities
-ICLR,ICON plc,Health Care,Biotechnology: Commercial Physical & Biological Resarch
-INTA,Intapp Inc.,Technology,Computer Software: Prepackaged Software
-IQV,IQVIA Holdings Inc.,Health Care,Biotechnology: Commercial Physical & Biological Resarch
-KFY,Korn Ferry,Consumer Discretionary,Diversified Commercial Services
+IEX,IDEX Corporation,Industrials,Fluid Controls
+KDP,Keurig Dr Pepper Inc.,Consumer Staples,Beverages (Production/Distribution)
+KHC,The Kraft Heinz Company,Consumer Staples,Packaged Foods
+KMB,Kimberly-Clark Corporation,Consumer Discretionary,Containers/Packaging
 KSS,Kohl's Corporation,Consumer Discretionary,Department/Specialty Retail Stores
 KTB,Kontoor Brands Inc. Common Stock ,Industrials,Garments and Clothing
 LILAK,Liberty Latin America Ltd.,Telecommunications,Cable & Other Pay Television Services
 LUV,Southwest Airlines Company,Consumer Discretionary,Air Freight/Delivery Services
 MD,Pediatrix Medical Group Inc.,Health Care,Hospital/Nursing Management
-MITK,Mitek Systems Inc.,Technology,Computer peripheral equipment
-NAVN,Navan Inc.,Technology,Computer Software: Prepackaged Software
-NTSK,Netskope Inc.,Technology,Computer Software: Prepackaged Software
-NUE,Nucor Corporation,Industrials,Steel/Iron Ore
+MNST,Monster Beverage Corporation,Consumer Staples,Beverages (Production/Distribution)
 NWL,Newell Brands Inc.,Industrials,Plastic Products
 PAY,Paymentus Holdings Inc.,Consumer Discretionary,Business Services
 PAYX,Paychex Inc.,Industrials,Diversified Commercial Services
 PDM,Piedmont Realty Trust Inc.,Real Estate,Building operators
+PEB,Pebblebrook Hotel Trust Common Shares of Beneficial Interest,Real Estate,Real Estate Investment Trusts
 PENN,PENN Entertainment Inc.,Consumer Discretionary,Hotels/Resorts
-PKG,Packaging Corporation of America,Consumer Discretionary,Containers/Packaging
-PRCH,Porch Group Inc.,Technology,Computer Software: Prepackaged Software
+PFG,Principal Financial Group Inc,Finance,Accident &Health Insurance
 PRG,PROG Holdings Inc.,Consumer Discretionary,Diversified Commercial Services
 PTRN,Pattern Group Inc. Series A,Consumer Discretionary,Catalog/Specialty Distribution
 PYPL,PayPal Holdings Inc.,Industrials,Diversified Commercial Services
 QNST,QuinStreet Inc.,Consumer Discretionary,Business Services
 RDN,Radian Group Inc.,Finance,Property-Casualty Insurers
 REYN,Reynolds Consumer Products Inc.,Consumer Discretionary,Containers/Packaging
-RL,Ralph Lauren Corporation,Industrials,Garments and Clothing
-RVTY,Revvity Inc.,Industrials,Biotechnology: Laboratory Analytical Instruments
-SAIL,SailPoint Inc.,Technology,Computer Software: Prepackaged Software
-SBH,Sally Beauty Holdings Inc. (Name to be changed from Sally Holdings Inc.),Consumer Discretionary,Other Specialty Stores
+RNST,Renasant Corporation,Finance,Major Banks
 SBUX,Starbucks Corporation,Consumer Discretionary,Restaurants
 SFBS,ServisFirst Bancshares Inc.,Finance,Major Banks
-SFNC,Simmons First National Corporation,Finance,Major Banks
 SONO,Sonos Inc.,Consumer Staples,Consumer Electronics/Appliances
-SPT,Sprout Social Inc,Technology,Computer Software: Prepackaged Software
 STAA,STAAR Surgical Company,Health Care,Ophthalmic Goods
 SWBI,Smith & Wesson Brands Inc.,Industrials,Ordnance And Accessories
-SXC,SunCoke Energy Inc.,Industrials,Steel/Iron Ore
-TDC,Teradata Corporation,Technology,Computer Software: Prepackaged Software
 TGT,Target Corporation,Consumer Discretionary,Department/Specialty Retail Stores
+TREX,Trex Company Inc.,Basic Materials,Forest Products
+TRGP,Targa Resources Inc.,Utilities,Natural Gas Distribution
 TROW,T. Rowe Price Group Inc.,Finance,Investment Managers
 ULCC,Frontier Group Holdings Inc.,Consumer Discretionary,Air Freight/Delivery Services
 UNFI,United Natural Foods Inc.,Consumer Discretionary,Food Distributors
@@ -99,8 +84,6 @@ VCTR,Victory Capital Holdings Inc.,Finance,Investment Managers
 VVX,V2X Inc.,Consumer Discretionary,Diversified Commercial Services
 WAB,Westinghouse Air Brake Technologies Corporation,Industrials,Railroads
 WAT,Waters Corporation,Industrials,Biotechnology: Laboratory Analytical Instruments
-WWW,Wolverine World Wide Inc.,Consumer Discretionary,Shoe Manufacturing
 XMTR,Xometry Inc.,Consumer Discretionary,Business Services
-XYZ,Block Inc.,Technology,Computer Software: Prepackaged Software
 YUM,Yum! Brands Inc.,Consumer Discretionary,Restaurants
 ZBH,Zimmer Biomet Holdings Inc.,Health Care,Industrial Specialties
