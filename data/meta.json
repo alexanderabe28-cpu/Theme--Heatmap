@@ -1,10 +1,10 @@
 {
-  "last_run_utc": "2026-11-18 03:55",
-  "last_date": "2026-11-17",
-  "tickers_requested": 4430,
-  "tickers_loaded": 4430,
-  "tickers_failed": 0,
-  "scan_hits": 63,
+  "last_run_utc": "2026-11-19 03:54",
+  "last_date": "2026-11-18",
+  "tickers_requested": 4423,
+  "tickers_loaded": 4422,
+  "tickers_failed": 1,
+  "scan_hits": 70,
   "industries_ranked": 138,
   "scan_config": {
     "min_price": 5,
@@ -24,5 +24,5 @@
     "trend": "stage2"
   },
   "r2000_source": "Proxy (Market-Cap-Rang 1001-3000)",
-  "universe_updated": "2026-11-12"
+  "universe_updated": "2026-11-19"
 }
