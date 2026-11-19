@@ -236,19 +236,38 @@ Ab 60 Risk-on (volle Vorgabe), 40-60 neutral (halbe), unter 40 Risk-off
 komplette Above/Below-Tabelle der Folie steht im Aufklappbereich "Market
 Metrics".
 
-## Industrie-RS – "One Rule To Rule Them All" (Scanner)
+## Branchen-Staerke – der RS-Baustein des 14-Uhr-Briefings (Sector-Map, Scanner)
 
-Jacobs' wichtigster Backtest-Befund: Jede Strategie wurde 2011-2026 in jedem
-Jahr besser, wenn nur Titel aus der oberen Haelfte der Industrien nach
-relativer Staerke zugelassen waren. Der Nachtlauf berechnet dafuer je
-Industrie (Zuordnung aus `data/universe/master.csv`, mindestens 3 Titel) den
-Median der Mitglieder-Performance ueber 1W/1M/3M/6M/1Y, rankt jede Spalte als
-Perzentil 1-99 ueber alle Industrien und bildet daraus Ind-RS (Mittel der
-Raenge 1W/1M/3M/6M, erneut gerankt). Ergebnis in `data/industry_rs.csv`,
-je Titel als Spalte `IndRS` im Snapshot.
+Jacobs' wichtigster Backtest-Befund ("One Rule"): Jede Strategie wurde
+2011-2026 in jedem Jahr besser, wenn nur Titel aus der oberen Haelfte der
+Industrien nach relativer Staerke zugelassen waren. Die Rechnung folgt seit
+November dem 14-Uhr-Briefing, damit beide dieselben Zahlen zeigen:
+
+- Grundlage: Universum ab 1 Mrd $ Boersenwert, Nasdaq-Brancheneinteilung aus
+  `data/universe/master.csv`, Gruppen mit mindestens 3 Titeln.
+- Je Gruppe der Median der Mitglieder ueber Tag/Woche/Monat/Quartal/Halbjahr/
+  Jahr; jedes Fenster ueber alle Gruppen als Rang 0-99 (bester Wert 99).
+- Mix = Woche 1, Monat 2, Quartal 3, Halbjahr 2, Jahr 1; der Rang des Mix ist
+  der RS. Ab 50 = obere Haelfte (fuehrend, gruen), ab 75 = stark.
+- Sektoren zusaetzlich mit Quadrant aus Woche gegen Monat: stark (beides ab
+  50), verbessert (nur Woche), schwaecht ab (nur Monat), schwach.
+
+Ergebnis in `data/industry_rs.csv` (mit den acht umsatzstaerksten Titeln je
+Branche) und `data/sector_rs.csv`; je Titel als Spalte `IndRS` im Snapshot,
+auch fuer Titel unter 1 Mrd $ ueber ihre Branche. Der Snapshot traegt jetzt
+ausserdem `Perf1W%` und `SubStage` (1A-4C, gleiche Regeln wie die Stage-
+Analyse der App).
+
+In der **Sector-Map** steht der Block "Branchen-Staerke" unter dem
+Stage-Dashboard: Sektoren als Streudiagramm Woche gegen Monat plus Tabelle,
+darunter die Branchen mit den Filtern Alle / Obere Haelfte / Stark / Untere
+Haelfte und einer Auswahl, die zu einer Branche die zehn groessten Titel nach
+Boersenwert zeigt (Tag/Woche/Monat/Quartal, Stage, Abstand zum 52-Wochen-
+Hoch). Der fruehere Sektor-Quadrant aus SPDR-ETF-Kursen ist damit ersetzt.
+Im **Scanner** liegt dieselbe Branchen-Tabelle im Aufklappbereich.
 
 `scanner_config.json` hat dafuer `min_industry_rs`, **Standard 50** – also
-genau Jacobs' Regel. Damit aendert sich die gespeicherte Scanner-Liste.
+genau Jacobs' Regel (Rang 0-99, obere Haelfte). Damit aendert sich die gespeicherte Scanner-Liste.
 Wer das nicht will, setzt den Wert auf null. Im Scanner-Tab gibt es den
 Filter "Industrie-RS min", die Spalte "Ind-RS" und die Industrie-Tabelle im
 Aufklappbereich. Wie die Market Cap ist der Industrie-RS ein heutiger Wert;
@@ -268,13 +287,6 @@ Unter der Sector-Map und der Stock Map steht das Dashboard der Folien
 Unterphase die Titel mit 1D %. Die Stock Map laedt dafuer 2 Jahre statt 6
 Monate (SMA200) und hat einen Stage-Filter – Jacobs' "Watchable" waeren
 z.B. die Stages 1A bis 2B.
-
-## Sektor-Rotation (Sector-Map)
-
-Wie auf der Folie "Sector Relative Strength": die 11 SPDR-Sektoren als
-Perzentilrang ihrer Wochen- (5 Tage) gegen Monatsperformance (21 Tage),
-Quadranten Strong / Improving / Weakening / Weak. Jacobs' Hinweis dazu:
-Strong schlaegt Improving – "leading stocks in leading groups".
 
 ## Nicht umgesetzt
 

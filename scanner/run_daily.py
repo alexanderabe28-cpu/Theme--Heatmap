@@ -94,12 +94,13 @@ def main() -> None:
 
     # Industrie-RS ("One Rule") vor dem Scan: fliesst als Filter und als
     # Spalte in den Snapshot ein
-    ind_tbl, ind_per_ticker = scan.industry_rs(ind, master)
+    ind_tbl, sec_tbl, ind_per_ticker = scan.industry_rs(ind, master)
     master = master.merge(ind_per_ticker.rename("IndRS"), left_on="Ticker",
                           right_index=True, how="left")
-    ind_tbl.reset_index().to_csv(os.path.join(DATA_DIR, "industry_rs.csv"),
-                                 index=False)
-    print(f"[run] Industrie-RS: {len(ind_tbl)} Industrien mit >= 3 Titeln")
+    ind_tbl.to_csv(os.path.join(DATA_DIR, "industry_rs.csv"), index=False)
+    sec_tbl.to_csv(os.path.join(DATA_DIR, "sector_rs.csv"), index=False)
+    print(f"[run] Branchen-Staerke (ab 1 Mrd $): {len(ind_tbl)} Industrien, "
+          f"{len(sec_tbl)} Sektoren")
 
     mask = scan.scan_mask(ind, master, cfg)
 

@@ -585,84 +585,6 @@ def render_stage_dashboard(df: pd.DataFrame, key: str, title: str = "") -> None:
                 f"{''.join(boxes)}</div>", unsafe_allow_html=True)
 
 
-# ---------------- Sektor-Rotation (Week-RS gegen Month-RS) ----------------
-SECTOR_ETFS = {
-    "XLK": "Technology", "XLC": "Communication", "XLY": "Cons. Discretionary",
-    "XLP": "Cons. Staples", "XLV": "Healthcare", "XLF": "Financials",
-    "XLI": "Industrials", "XLE": "Energy", "XLB": "Materials",
-    "XLU": "Utilities", "XLRE": "Real Estate",
-}
-SECTOR_QUADS = {"Strong": MINT, "Improving": "#7aa2ff",
-                "Weakening": "#ffd166", "Weak": "#ff5fa2"}
-
-
-@st.cache_data(ttl=QUOTE_TTL, show_spinner=False)
-def sector_rs() -> pd.DataFrame:
-    """Relative Staerke der 11 SPDR-Sektoren als Perzentilrang (0-100) der
-    Wochen- und Monatsperformance – wie auf der Folie "Sector Relative
-    Strength" (Finviz-Logik: Rang unter den Sektoren, nicht gegen SPY)."""
-    closes = fetch_closes(tuple(SECTOR_ETFS))
-    if closes.empty:
-        return pd.DataFrame()
-    rows = {}
-    for t in closes.columns:
-        c = closes[t].dropna()
-        if len(c) < 22:
-            continue
-        rows[t] = {"Woche %": (c.iloc[-1] / c.iloc[-6] - 1) * 100,
-                   "Monat %": (c.iloc[-1] / c.iloc[-22] - 1) * 100}
-    df = pd.DataFrame(rows).T
-    if df.empty:
-        return df
-    df["Week RS"] = (df["Woche %"].rank(pct=True) * 100).round(0)
-    df["Month RS"] = (df["Monat %"].rank(pct=True) * 100).round(0)
-    df["Sektor"] = pd.Series(SECTOR_ETFS).reindex(df.index)
-    df["Quadrant"] = np.select(
-        [(df["Week RS"] >= 50) & (df["Month RS"] >= 50),
-         (df["Week RS"] >= 50) & (df["Month RS"] < 50),
-         (df["Week RS"] < 50) & (df["Month RS"] >= 50)],
-        ["Strong", "Improving", "Weakening"], default="Weak")
-    df.index.name = "Ticker"
-    return df.sort_values(["Month RS", "Week RS"], ascending=False)
-
-
-def render_sector_rs(df: pd.DataFrame) -> None:
-    import plotly.graph_objects as go
-
-    fig = go.Figure()
-    for x0, x1, y0, y1, col in ((50, 100, 50, 100, MINT), (50, 100, 0, 50, "#7aa2ff"),
-                                (0, 50, 50, 100, "#ffd166"), (0, 50, 0, 50, "#ff5fa2")):
-        fig.add_shape(type="rect", x0=x0, x1=x1, y0=y0, y1=y1, layer="below",
-                      fillcolor=col, opacity=0.08, line_width=0)
-    for q, ax, ay in (("Strong", 99, 99), ("Improving", 99, 2),
-                      ("Weakening", 1, 99), ("Weak", 1, 2)):
-        fig.add_annotation(x=ax, y=ay, text=q, showarrow=False,
-                           xanchor="right" if ax > 50 else "left",
-                           yanchor="top" if ay > 50 else "bottom",
-                           font=dict(color=SECTOR_QUADS[q], size=12))
-    fig.add_trace(go.Scatter(
-        x=df["Week RS"], y=df["Month RS"], mode="markers+text",
-        text=df.index, textposition="top center",
-        textfont=dict(color="#fff", size=11),
-        marker=dict(size=13, color=[SECTOR_QUADS[q] for q in df["Quadrant"]],
-                    line=dict(color=NAVY_BG, width=1.5)),
-        customdata=np.stack([df["Sektor"], df["Woche %"], df["Monat %"]], axis=-1),
-        hovertemplate=("<b>%{text}</b> · %{customdata[0]}<br>Woche "
-                       "%{customdata[1]:+.2f} % (Rang %{x:.0f})<br>Monat "
-                       "%{customdata[2]:+.2f} % (Rang %{y:.0f})<extra></extra>"),
-        showlegend=False))
-    fig.add_hline(y=50, line=dict(color="#4a5a8a", width=1))
-    fig.add_vline(x=50, line=dict(color="#4a5a8a", width=1))
-    fig.update_layout(
-        title=dict(text="Sektor-Rotation · Week RS gegen Month RS (SPDR-Sektoren)",
-                   font=dict(size=15, color="#fff")),
-        height=440, margin=dict(t=45, l=0, r=0, b=0),
-        paper_bgcolor=NAVY_BG, plot_bgcolor=NAVY_BG, font=dict(color="#fff"),
-        xaxis=dict(title="Week RS (Perzentilrang)", range=[-3, 103],
-                   gridcolor="#243063", zeroline=False),
-        yaxis=dict(title="Month RS (Perzentilrang)", range=[-3, 103],
-                   gridcolor="#243063", zeroline=False))
-    st.plotly_chart(fig, use_container_width=True, key="sector_rs_chart")
 
 
 def fmt_num(spec: str):
@@ -852,6 +774,343 @@ ms = {"Aus": 0, "60 s": 60_000, "5 min": 300_000, "15 min": 900_000}[interval]
 if ms:
     st_autorefresh(interval=ms, key="auto_refresh")
 
+# ----- Daten aus dem taeglichen GitHub-Actions-Lauf (scanner/run_daily.py) -----
+DATA_DIR = os.path.join(BASE, "data")
+SCAN_DIR = os.path.join(DATA_DIR, "scan")
+SCANNER_CONFIG = os.path.join(BASE, "scanner_config.json")
+BREADTH_UNIVERSES = {
+    "sp500": "S&P 500 (RSP-Logik)", "ndx": "Nasdaq 100 (QQQE-Logik)",
+    "dow": "Dow Jones 30", "core": "S&P 500 + Nasdaq 100 + Dow",
+    "nasdaq": "Nasdaq Composite", "r2000": "Russell 2000",
+    "cap1b": "Market Cap ab 1 Mrd $", "all": "Gesamt", "scan": "Scanner-Liste",
+}
+BENCH_FOR = {"sp500": "SPY", "ndx": "QQQ", "dow": "SPY", "core": "SPY",
+             "nasdaq": "QQQ", "r2000": "IWM", "cap1b": "SPY", "all": "SPY",
+             "scan": "SPY"}
+# Breadth-Score "Trend-Struktur" 0-100 (eigene Konstruktion nach dem Aufbau
+# der Folie "Market Metrics - Summary"): Mittel der Teilnahme-Quoten, die den
+# Trendzustand beschreiben. >= 60 Risk-on, 40-60 neutral, < 40 Risk-off.
+SCORE_COLS = ["p_ab_e10", "p_ab_e20", "p_ab50", "p_ab200", "p_e10_ge_e20",
+              "p_s50_ge_s200", "p_up_1m", "p_range20_hi"]
+SCORE_UNIVERSES = ["ndx", "sp500", "core", "cap1b"]      # wie auf der Folie
+MARKET_METRICS = [            # (Spalte, Label, Typ: p = Prozent, c = Zaehler-Paar)
+    ("adv", "Day Chg", "c:adv:dec"),
+    ("p_up_open", "Open Chg", "p"),
+    ("p_up_1w", "Week", "p"), ("p_up_1m", "Month", "p"), ("p_up_3m", "Qtr", "p"),
+    ("p_up_6m", "Half Year", "p"), ("p_up_1y", "Year", "p"),
+    ("p_ab_e10", "Price to EMA10", "p"), ("p_ab_e20", "Price to EMA20", "p"),
+    ("p_ab20", "Price to SMA20", "p"), ("p_ab50", "Price to SMA50", "p"),
+    ("p_ab200", "Price to SMA200", "p"),
+    ("p_e10_ge_e20", "EMA10 >= EMA20", "p"), ("p_s20_ge_s50", "SMA20 >= SMA50", "p"),
+    ("p_s50_ge_s200", "SMA50 >= SMA200", "p"),
+    ("p_full_stack", "SMA20 >= SMA50 >= SMA200", "p"),
+    ("up4", "4% Up vs 4% Down", "c:up4:dn4"),
+    ("nh20", "New 20-Day High/Low", "c:nh20:nl20"),
+    ("nh", "New 52-Wk High/Low", "c:nh:nl"),
+    ("p_range20_hi", "Price-to-20 Day Range", "p"),
+]
+
+
+def trend_score(row: pd.Series) -> float:
+    vals = [row[c] for c in SCORE_COLS if c in row.index and pd.notna(row[c])]
+    return float(np.mean(vals)) if vals else np.nan
+
+
+def score_label(s: float) -> tuple:
+    """(Label, Farbe, Multiplikator fuers Risiko je Trade)."""
+    if pd.isna(s):
+        return "–", "#8a93b8", np.nan
+    if s >= 60:
+        return "RISK-ON", MINT, 1.0
+    if s >= 40:
+        return "NEUTRAL", "#ffd166", 0.5
+    return "RISK-OFF", "#ff5fa2", 0.25
+
+
+def score_card(title: str, s: float) -> str:
+    lbl, col, _ = score_label(s)
+    txt = "–" if pd.isna(s) else f"{s:.0f}"
+    w = 0 if pd.isna(s) else s
+    return (f"<div style='background:#10182f;border:1px solid #243063;"
+            f"border-radius:8px;padding:10px 12px;flex:1;min-width:150px'>"
+            f"<div style='color:#9fb0e8;font-size:11px'>{title}</div>"
+            f"<div style='color:{col};font-size:26px;font-weight:900'>{txt}</div>"
+            f"<div style='background:#243063;height:5px;border-radius:3px'>"
+            f"<div style='background:{col};width:{w:.0f}%;height:100%;"
+            f"border-radius:3px'></div></div>"
+            f"<div style='color:{col};font-size:11px;font-weight:800;"
+            f"margin-top:4px'>{lbl}</div></div>")
+
+
+def market_metrics_table(row: pd.Series) -> pd.DataFrame:
+    """Tabelle wie auf der Folie: je Kennzahl Above / Below / Anteil."""
+    n = int(row["n"]) if pd.notna(row.get("n")) else 0
+    out = []
+    for col, label, typ in MARKET_METRICS:
+        if typ == "p":
+            if col not in row.index or pd.isna(row[col]):
+                continue
+            up = int(round(row[col] / 100 * n))
+            out.append((label, up, n - up, row[col]))
+        else:
+            _, a, b = typ.split(":")
+            if a not in row.index or pd.isna(row[a]):
+                continue
+            up, dn = int(row[a]), int(row[b])
+            share = up / (up + dn) * 100 if up + dn else np.nan
+            out.append((label, up, dn, share))
+    return pd.DataFrame(out, columns=["Kennzahl", "Above", "Below", "Anteil %"])
+BREADTH_RANGES = {"3M": 63, "6M": 126, "1J": 252, "2J": 504, "Alles": None}
+BREADTH_PANELS = ["Benchmark", "% ueber Moving Averages", "Stages",
+                  "Neue Hochs - Tiefs", "A/D-Linie", "McClellan-Oszillator",
+                  "Up 4% / Down 4%", "Stockbee-Ratio 5T / 10T",
+                  "+-25 % im Quartal", "Scanner-Treffer"]
+TREND_OPTS = {None: "aus", "stage2": "Stage 2 (ueber steigender SMA200)",
+              "sma50_above_sma200": "SMA50 > SMA200",
+              "above_sma200": "Close > SMA200"}
+
+
+def read_data_csv(path: str) -> pd.DataFrame:
+    """Daten-CSV lesen; Ticker wie 'NA' bleiben Ticker statt NaN."""
+    if not os.path.exists(path):
+        return pd.DataFrame()
+    df = pd.read_csv(path, keep_default_na=False, na_values=[""])
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"])
+    return df
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def load_breadth(freq: str) -> pd.DataFrame:
+    return read_data_csv(os.path.join(DATA_DIR, f"breadth_{freq}.csv"))
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def load_benchmarks() -> pd.DataFrame:
+    return read_data_csv(os.path.join(DATA_DIR, "benchmarks.csv"))
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def load_data_meta() -> dict:
+    import json as _json
+    path = os.path.join(DATA_DIR, "meta.json")
+    if not os.path.exists(path):
+        return {}
+    try:
+        # utf-8-sig: auch Dateien mit BOM (z.B. unter Windows gespeichert)
+        with open(path, encoding="utf-8-sig") as f:
+            return _json.load(f)
+    except ValueError:
+        return {}
+
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def load_scan_snapshot() -> pd.DataFrame:
+    return read_data_csv(os.path.join(SCAN_DIR, "snapshot.csv"))
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def load_scan_history() -> pd.DataFrame:
+    return read_data_csv(os.path.join(SCAN_DIR, "scan_history.csv"))
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def load_industry_rs() -> pd.DataFrame:
+    """Industrie-RS aus dem Nachtlauf (data/industry_rs.csv)."""
+    return read_data_csv(os.path.join(DATA_DIR, "industry_rs.csv"))
+
+
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def load_sector_rs() -> pd.DataFrame:
+    """Sektor-RS aus dem Nachtlauf (data/sector_rs.csv)."""
+    return read_data_csv(os.path.join(DATA_DIR, "sector_rs.csv"))
+
+
+# ---------------- Branchen-Staerke: RS-Baustein des 14-Uhr-Briefings ----------------
+SECT_DE = {"Technology": "Technologie", "Health Care": "Gesundheit",
+           "Finance": "Finanzen", "Energy": "Energie",
+           "Consumer Discretionary": "Zyklischer Konsum",
+           "Consumer Staples": "Basiskonsum", "Industrials": "Industrie",
+           "Basic Materials": "Grundstoffe",
+           "Telecommunications": "Telekommunikation", "Utilities": "Versorger",
+           "Real Estate": "Immobilien", "Miscellaneous": "Sonstige"}
+QUAD_DE = {"stark": MINT, "verbessert": "#ffd166", "schwaecht ab": "#7aa2ff",
+           "schwach": "#ff5fa2"}
+IND_TOP, IND_STRONG = 50, 75           # obere Haelfte / stark, wie im Briefing
+RS_WIN = [("d", "Tag"), ("w", "Woche"), ("m", "Monat"), ("q", "Quartal"),
+          ("h", "Halbjahr"), ("y", "Jahr")]
+
+
+def col_rank99(v):
+    """Rangfarbe wie im Briefing: ab 75 gruen, unter 25 rot."""
+    if pd.isna(v):
+        return ""
+    if v >= IND_STRONG:
+        return "color: #3fe0a0; font-weight: 700"
+    if v < 25:
+        return "color: #e05a5a; font-weight: 700"
+    return ""
+
+
+def col_lead(v):
+    """RS der Gruppe: obere Haelfte gruen (fuehrend), sonst gedimmt."""
+    if pd.isna(v):
+        return ""
+    return "color: #3fe0a0; font-weight: 700" if v >= IND_TOP else "color: #8a93b8"
+
+
+def render_sector_rs(df: pd.DataFrame) -> None:
+    """Sektoren Woche gegen Monat – Streudiagramm und Tabelle. Raenge 0-99
+    aus den Medianen der Mitglieder (1-Mrd-Universum), nicht aus ETF-Kursen."""
+    import plotly.graph_objects as go
+
+    d = df.copy()
+    d["Label"] = d["Sector"].map(SECT_DE).fillna(d["Sector"])
+    fig = go.Figure()
+    for x0, x1, y0, y1, col in ((50, 99, 50, 99, MINT), (50, 99, 0, 50, "#ffd166"),
+                                (0, 50, 50, 99, "#7aa2ff"), (0, 50, 0, 50, "#ff5fa2")):
+        fig.add_shape(type="rect", x0=x0, x1=x1, y0=y0, y1=y1, layer="below",
+                      fillcolor=col, opacity=0.08, line_width=0)
+    for q, ax, ay in (("stark", 98, 98), ("verbessert", 98, 1),
+                      ("schwaecht ab", 1, 98), ("schwach", 1, 1)):
+        fig.add_annotation(x=ax, y=ay, text=q, showarrow=False,
+                           xanchor="right" if ax > 50 else "left",
+                           yanchor="top" if ay > 50 else "bottom",
+                           font=dict(color=QUAD_DE[q], size=12))
+    fig.add_trace(go.Scatter(
+        x=d["w"], y=d["m"], mode="markers+text", text=d["Label"],
+        textposition="top center", textfont=dict(color="#fff", size=11),
+        marker=dict(size=13, color=[QUAD_DE.get(q, "#8a93b8") for q in d["Quadrant"]],
+                    line=dict(color=NAVY_BG, width=1.5)),
+        customdata=np.stack([d["n"], d["med_w"], d["med_m"], d["SecRS"]], axis=-1),
+        hovertemplate=("<b>%{text}</b> · %{customdata[0]} Titel<br>"
+                       "Woche Rang %{x:.0f} (Median %{customdata[1]:+.1f} %)<br>"
+                       "Monat Rang %{y:.0f} (Median %{customdata[2]:+.1f} %)<br>"
+                       "Mix RS %{customdata[3]:.0f}<extra></extra>"),
+        showlegend=False))
+    fig.add_hline(y=50, line=dict(color="#4a5a8a", width=1))
+    fig.add_vline(x=50, line=dict(color="#4a5a8a", width=1))
+    fig.update_layout(
+        title=dict(text="Sektoren · Woche gegen Monat (Rang 0-99 je Fenster)",
+                   font=dict(size=15, color="#fff")),
+        height=440, margin=dict(t=45, l=0, r=0, b=0),
+        paper_bgcolor=NAVY_BG, plot_bgcolor=NAVY_BG, font=dict(color="#fff"),
+        xaxis=dict(title="Woche RS", range=[-4, 104], gridcolor="#243063",
+                   zeroline=False),
+        yaxis=dict(title="Monat RS", range=[-4, 104], gridcolor="#243063",
+                   zeroline=False))
+    st.plotly_chart(fig, use_container_width=True, key="sector_rs_chart")
+
+    tbl = pd.DataFrame({
+        "Sektor": d["Label"], "Titel": d["n"].astype(int),
+        "Woche RS": d["w"], "Monat RS": d["m"], "Quadrant": d["Quadrant"],
+        "Quartal RS": d["q"], "Mix RS": d["SecRS"],
+        "Monat %": d["med_m"], "Quartal %": d["med_q"],
+    }).sort_values("Mix RS", ascending=False)
+
+    def col_quad(v):
+        c = QUAD_DE.get(v)
+        return f"color: {c}; font-weight: 700" if c else ""
+
+    st.dataframe(
+        tbl.style
+        .map(col_rank99, subset=["Woche RS", "Monat RS", "Quartal RS"])
+        .map(col_lead, subset=["Mix RS"])
+        .map(col_quad, subset=["Quadrant"])
+        .map(col_pct, subset=["Monat %", "Quartal %"])
+        .format({**{c: fmt_num("{:.0f}") for c in
+                    ["Woche RS", "Monat RS", "Quartal RS", "Mix RS"]},
+                 "Monat %": fmt_num("{:+.1f}"), "Quartal %": fmt_num("{:+.1f}")}),
+        use_container_width=True, hide_index=True, height=42 + 35 * len(tbl))
+
+
+def render_industry_block(ind_rs: pd.DataFrame, snap: pd.DataFrame,
+                          key: str, with_top: bool = True) -> None:
+    """Branchen-Tabelle mit den Filtern des Briefings und – optional – den
+    zehn groessten Titeln einer Branche nach Boersenwert (aus dem Snapshot)."""
+    if ind_rs.empty or "w" not in ind_rs.columns:
+        st.info("Branchen-RS im neuen Format erscheint nach dem naechsten "
+                "Nachtlauf (data/industry_rs.csv).")
+        return
+    d = ind_rs.copy()
+    n_all = len(d)
+    n_top = int((d["IndRS"] >= IND_TOP).sum())
+    n_strong = int((d["IndRS"] >= IND_STRONG).sum())
+    opts = {f"Alle ({n_all})": "all",
+            f"Obere Haelfte, fuehrend ({n_top})": "top",
+            f"Stark, RS ab {IND_STRONG} ({n_strong})": "strong",
+            f"Untere Haelfte ({n_all - n_top})": "low"}
+    pick = st.radio("Filter", list(opts), horizontal=True,
+                    key=f"ind_filter_{key}", label_visibility="collapsed")
+    f = opts[pick]
+    if f == "top":
+        d = d[d["IndRS"] >= IND_TOP]
+    elif f == "strong":
+        d = d[d["IndRS"] >= IND_STRONG]
+    elif f == "low":
+        d = d[d["IndRS"] < IND_TOP]
+    d = d.sort_values(["IndRS", "comp"], ascending=False)
+
+    view = pd.DataFrame({
+        "Branche": d["Industry"], "RS": d["IndRS"], "Titel": d["n"].astype(int),
+        **{lbl: d[k] for k, lbl in RS_WIN},
+        "Monat %": d["med_m"], "Quartal %": d["med_q"],
+        "Sektor": d["Sector"].map(SECT_DE).fillna(d["Sector"]),
+        "Groesste Titel (Ø-Umsatz)": d["syms"].fillna("").str.replace("|", ", "),
+    })
+    rank_cols = [lbl for _, lbl in RS_WIN]
+    st.dataframe(
+        view.style
+        .map(col_lead, subset=["RS"])
+        .map(col_rank99, subset=rank_cols)
+        .map(col_pct, subset=["Monat %", "Quartal %"])
+        .format({**{c: fmt_num("{:.0f}") for c in ["RS"] + rank_cols},
+                 "Monat %": fmt_num("{:+.1f}"), "Quartal %": fmt_num("{:+.1f}")}),
+        use_container_width=True, hide_index=True,
+        height=min(42 + 35 * len(view), 700), key=f"ind_table_{key}")
+
+    if not with_top or snap is None or snap.empty:
+        return
+    choice = st.selectbox("Branche -> die zehn groessten Titel nach Boersenwert",
+                          ["–"] + list(d["Industry"]), key=f"ind_pick_{key}")
+    if choice == "–":
+        return
+    # wie im Briefing: nur das 1-Mrd-Universum, aus dem auch der RS stammt
+    t = (snap[(snap["Industry"] == choice) & (snap["MarketCap"] >= 1e9)]
+         .sort_values("MarketCap", ascending=False).head(10))
+    if t.empty:
+        st.caption("Keine Titel dieser Branche im Snapshot.")
+        return
+    col = lambda c: t[c] if c in t.columns else pd.Series(np.nan, index=t.index)
+    top = pd.DataFrame({
+        "Ticker": t["Ticker"], "Unternehmen": t["Name"],
+        "Boersenwert Mrd $": t["MarketCap"] / 1e9,
+        "Ø-Umsatz 20T Mio $": col("AVOL$") / 1e6,
+        "Tag %": col("Chg%"), "Woche %": col("Perf1W%"),
+        "Monat %": col("Perf1M%"), "Quartal %": col("Perf3M%"),
+        "Stage": col("SubStage").fillna(col("Stage")),
+        "zum 52W-Hoch %": col("FromHigh%"), "Ind-RS": col("IndRS"),
+    })
+    pct_cols = ["Tag %", "Woche %", "Monat %", "Quartal %"]
+    st.dataframe(
+        top.style
+        .map(col_pct, subset=pct_cols)
+        .map(col_stage, subset=["Stage"])
+        .map(col_lead, subset=["Ind-RS"])
+        .format({"Boersenwert Mrd $": fmt_num("{:,.1f}"),
+                 "Ø-Umsatz 20T Mio $": fmt_num("{:,.0f}"),
+                 "zum 52W-Hoch %": fmt_num("{:+.1f}"), "Ind-RS": fmt_num("{:.0f}"),
+                 **{c: fmt_num("{:+.1f}") for c in pct_cols}}),
+        use_container_width=True, hide_index=True, height=42 + 35 * len(top),
+        key=f"ind_top_{key}")
+    st.caption(f"{choice}: die {len(top)} groessten Titel nach Boersenwert "
+               f"(von {int(ind_rs.loc[ind_rs['Industry'] == choice, 'n'].iloc[0])} "
+               "im 1-Mrd-Universum). Stage = Unterphase aus dem Nachtlauf.")
+
+
 VIEWS = ["Sector-Map", "Stock Map", "Futures / Makro", "OvsD", "Generaele",
          "Breadth", "Scanner", "Theme Tracker", "Kalender", "Universum"]
 # Bewusst kein st.tabs: Streamlit fuehrt bei jedem Rerun ALLE Tab-Bloecke aus,
@@ -950,14 +1209,26 @@ if view == "Sector-Map":
                     "20-Tage-Steigung), Unterphasen nach Steve Jacobs: 2B/4B = "
                     "neues 20-Tage-Hoch/-Tief, 2C/4C = >= 3 ATR vom EMA10, "
                     "1B/3A = ueber SMA50. Bullish = Stage 1 + 2.")
-            sec_rs = sector_rs()
-            if not sec_rs.empty:
-                render_sector_rs(sec_rs)
+            # --- Branchen-Staerke (RS-Baustein des 14-Uhr-Briefings) ---
+            sec_rs_df, ind_rs_df = load_sector_rs(), load_industry_rs()
+            st.markdown("#### Branchen-Staerke")
+            if sec_rs_df.empty or "w" not in sec_rs_df.columns:
+                st.info("Erscheint nach dem naechsten Nachtlauf: der Lauf "
+                        "schreibt dann data/sector_rs.csv und industry_rs.csv "
+                        "im Format des 14-Uhr-Briefings.")
+            else:
                 st.caption(
-                    "Rang 0-100 unter den 11 SPDR-Sektoren: Woche = 5, Monat = "
-                    "21 Handelstage. Strong = beides >= 50, Improving = nur "
-                    "Woche, Weakening = nur Monat. Nach Steve Jacobs lohnt sich "
-                    "der Fokus auf Strong, nicht auf Improving.")
+                    '"Eine Regel": nur Aktien aus Branchen der oberen Haelfte '
+                    "nach relativer Staerke. Grundlage ist das Universum ab "
+                    "1 Mrd $ mit der Nasdaq-Brancheneinteilung, je Fenster der "
+                    "Median der Mitglieder; Rang 0-99 je Fenster, RS = Rang des "
+                    "Mix (Woche 1, Monat 2, Quartal 3, Halbjahr 2, Jahr 1). "
+                    "Gruen = obere Haelfte, fuehrend. Uebernommen aus dem "
+                    "14-Uhr-Briefing.")
+                render_sector_rs(sec_rs_df)
+                st.markdown("**Branchen**")
+                render_industry_block(ind_rs_df, load_scan_snapshot(),
+                                      key="sector")
             st.caption(
                 f"{tf} = letzter Kurs vs. Close vor {TIMEFRAMES[tf][0]} Handelstag(en) · "
                 f"Skala ±{limit:.0f} % · Stand: {closes.index[-1]:%Y-%m-%d} · "
@@ -1319,136 +1590,6 @@ def breadth_card(left_lbl: str, right_lbl: str, up: int, down: int,
     return " ".join(line.strip() for line in html.splitlines())
 
 
-# ----- Daten aus dem taeglichen GitHub-Actions-Lauf (scanner/run_daily.py) -----
-DATA_DIR = os.path.join(BASE, "data")
-SCAN_DIR = os.path.join(DATA_DIR, "scan")
-SCANNER_CONFIG = os.path.join(BASE, "scanner_config.json")
-BREADTH_UNIVERSES = {
-    "sp500": "S&P 500 (RSP-Logik)", "ndx": "Nasdaq 100 (QQQE-Logik)",
-    "dow": "Dow Jones 30", "core": "S&P 500 + Nasdaq 100 + Dow",
-    "nasdaq": "Nasdaq Composite", "r2000": "Russell 2000",
-    "cap1b": "Market Cap ab 1 Mrd $", "all": "Gesamt", "scan": "Scanner-Liste",
-}
-BENCH_FOR = {"sp500": "SPY", "ndx": "QQQ", "dow": "SPY", "core": "SPY",
-             "nasdaq": "QQQ", "r2000": "IWM", "cap1b": "SPY", "all": "SPY",
-             "scan": "SPY"}
-# Breadth-Score "Trend-Struktur" 0-100 (eigene Konstruktion nach dem Aufbau
-# der Folie "Market Metrics - Summary"): Mittel der Teilnahme-Quoten, die den
-# Trendzustand beschreiben. >= 60 Risk-on, 40-60 neutral, < 40 Risk-off.
-SCORE_COLS = ["p_ab_e10", "p_ab_e20", "p_ab50", "p_ab200", "p_e10_ge_e20",
-              "p_s50_ge_s200", "p_up_1m", "p_range20_hi"]
-SCORE_UNIVERSES = ["ndx", "sp500", "core", "cap1b"]      # wie auf der Folie
-MARKET_METRICS = [            # (Spalte, Label, Typ: p = Prozent, c = Zaehler-Paar)
-    ("adv", "Day Chg", "c:adv:dec"),
-    ("p_up_open", "Open Chg", "p"),
-    ("p_up_1w", "Week", "p"), ("p_up_1m", "Month", "p"), ("p_up_3m", "Qtr", "p"),
-    ("p_up_6m", "Half Year", "p"), ("p_up_1y", "Year", "p"),
-    ("p_ab_e10", "Price to EMA10", "p"), ("p_ab_e20", "Price to EMA20", "p"),
-    ("p_ab20", "Price to SMA20", "p"), ("p_ab50", "Price to SMA50", "p"),
-    ("p_ab200", "Price to SMA200", "p"),
-    ("p_e10_ge_e20", "EMA10 >= EMA20", "p"), ("p_s20_ge_s50", "SMA20 >= SMA50", "p"),
-    ("p_s50_ge_s200", "SMA50 >= SMA200", "p"),
-    ("p_full_stack", "SMA20 >= SMA50 >= SMA200", "p"),
-    ("up4", "4% Up vs 4% Down", "c:up4:dn4"),
-    ("nh20", "New 20-Day High/Low", "c:nh20:nl20"),
-    ("nh", "New 52-Wk High/Low", "c:nh:nl"),
-    ("p_range20_hi", "Price-to-20 Day Range", "p"),
-]
-
-
-def trend_score(row: pd.Series) -> float:
-    vals = [row[c] for c in SCORE_COLS if c in row.index and pd.notna(row[c])]
-    return float(np.mean(vals)) if vals else np.nan
-
-
-def score_label(s: float) -> tuple:
-    """(Label, Farbe, Multiplikator fuers Risiko je Trade)."""
-    if pd.isna(s):
-        return "–", "#8a93b8", np.nan
-    if s >= 60:
-        return "RISK-ON", MINT, 1.0
-    if s >= 40:
-        return "NEUTRAL", "#ffd166", 0.5
-    return "RISK-OFF", "#ff5fa2", 0.25
-
-
-def score_card(title: str, s: float) -> str:
-    lbl, col, _ = score_label(s)
-    txt = "–" if pd.isna(s) else f"{s:.0f}"
-    w = 0 if pd.isna(s) else s
-    return (f"<div style='background:#10182f;border:1px solid #243063;"
-            f"border-radius:8px;padding:10px 12px;flex:1;min-width:150px'>"
-            f"<div style='color:#9fb0e8;font-size:11px'>{title}</div>"
-            f"<div style='color:{col};font-size:26px;font-weight:900'>{txt}</div>"
-            f"<div style='background:#243063;height:5px;border-radius:3px'>"
-            f"<div style='background:{col};width:{w:.0f}%;height:100%;"
-            f"border-radius:3px'></div></div>"
-            f"<div style='color:{col};font-size:11px;font-weight:800;"
-            f"margin-top:4px'>{lbl}</div></div>")
-
-
-def market_metrics_table(row: pd.Series) -> pd.DataFrame:
-    """Tabelle wie auf der Folie: je Kennzahl Above / Below / Anteil."""
-    n = int(row["n"]) if pd.notna(row.get("n")) else 0
-    out = []
-    for col, label, typ in MARKET_METRICS:
-        if typ == "p":
-            if col not in row.index or pd.isna(row[col]):
-                continue
-            up = int(round(row[col] / 100 * n))
-            out.append((label, up, n - up, row[col]))
-        else:
-            _, a, b = typ.split(":")
-            if a not in row.index or pd.isna(row[a]):
-                continue
-            up, dn = int(row[a]), int(row[b])
-            share = up / (up + dn) * 100 if up + dn else np.nan
-            out.append((label, up, dn, share))
-    return pd.DataFrame(out, columns=["Kennzahl", "Above", "Below", "Anteil %"])
-BREADTH_RANGES = {"3M": 63, "6M": 126, "1J": 252, "2J": 504, "Alles": None}
-BREADTH_PANELS = ["Benchmark", "% ueber Moving Averages", "Stages",
-                  "Neue Hochs - Tiefs", "A/D-Linie", "McClellan-Oszillator",
-                  "Up 4% / Down 4%", "Stockbee-Ratio 5T / 10T",
-                  "+-25 % im Quartal", "Scanner-Treffer"]
-TREND_OPTS = {None: "aus", "stage2": "Stage 2 (ueber steigender SMA200)",
-              "sma50_above_sma200": "SMA50 > SMA200",
-              "above_sma200": "Close > SMA200"}
-
-
-def read_data_csv(path: str) -> pd.DataFrame:
-    """Daten-CSV lesen; Ticker wie 'NA' bleiben Ticker statt NaN."""
-    if not os.path.exists(path):
-        return pd.DataFrame()
-    df = pd.read_csv(path, keep_default_na=False, na_values=[""])
-    if "date" in df.columns:
-        df["date"] = pd.to_datetime(df["date"])
-    return df
-
-
-@st.cache_data(ttl=600, show_spinner=False)
-def load_breadth(freq: str) -> pd.DataFrame:
-    return read_data_csv(os.path.join(DATA_DIR, f"breadth_{freq}.csv"))
-
-
-@st.cache_data(ttl=600, show_spinner=False)
-def load_benchmarks() -> pd.DataFrame:
-    return read_data_csv(os.path.join(DATA_DIR, "benchmarks.csv"))
-
-
-@st.cache_data(ttl=600, show_spinner=False)
-def load_data_meta() -> dict:
-    import json as _json
-    path = os.path.join(DATA_DIR, "meta.json")
-    if not os.path.exists(path):
-        return {}
-    try:
-        # utf-8-sig: auch Dateien mit BOM (z.B. unter Windows gespeichert)
-        with open(path, encoding="utf-8-sig") as f:
-            return _json.load(f)
-    except ValueError:
-        return {}
-
-
 def breadth_derived(df: pd.DataFrame, freq: str) -> pd.DataFrame:
     """A/D-Linie, NH-NL, McClellan und Stockbee-Ratios aus der Rohreihe."""
     d = df.sort_values("date").set_index("date").copy()
@@ -1769,22 +1910,6 @@ if view == "Breadth":
             "NH/NL = 252-Tage-Extreme.")
 
 # ----- Tab: Scanner (eigene Universumsliste) -----
-@st.cache_data(ttl=600, show_spinner=False)
-def load_scan_snapshot() -> pd.DataFrame:
-    return read_data_csv(os.path.join(SCAN_DIR, "snapshot.csv"))
-
-
-@st.cache_data(ttl=600, show_spinner=False)
-def load_scan_history() -> pd.DataFrame:
-    return read_data_csv(os.path.join(SCAN_DIR, "scan_history.csv"))
-
-
-@st.cache_data(ttl=600, show_spinner=False)
-def load_industry_rs() -> pd.DataFrame:
-    """Industrie-RS aus dem Nachtlauf (data/industry_rs.csv)."""
-    return read_data_csv(os.path.join(DATA_DIR, "industry_rs.csv"))
-
-
 def load_scanner_config() -> dict:
     import json as _json
     if not os.path.exists(SCANNER_CONFIG):
@@ -1993,40 +2118,10 @@ if view == "Scanner":
         # --- Industrie-RS ("One Rule To Rule Them All") ---
         ind_rs = load_industry_rs()
         if not ind_rs.empty:
-            with st.expander("Industrie-RS · fuehrende Gruppen (One Rule)",
+            with st.expander("Branchen-Staerke · fuehrende Gruppen (One Rule)",
                              expanded=False):
-                st.caption(
-                    "Steve Jacobs: Jede Strategie schnitt 2011-2026 in jedem "
-                    "Jahr besser ab, wenn nur Titel aus der oberen Haelfte der "
-                    "Industrien nach relativer Staerke erlaubt waren. Ind-RS = "
-                    "Perzentil 1-99 ueber alle Industrien aus dem Median der "
-                    "Mitglieder (1W/1M/3M/6M); >= 50 = obere Haelfte.")
-                irs_view = ind_rs.rename(columns={
-                    "Industry": "Industrie", "Sector": "Sektor", "n": "Titel",
-                    "rs_1W": "RS 1W", "rs_1M": "RS 1M", "rs_3M": "RS 3M",
-                    "rs_6M": "RS 6M", "rs_1Y": "RS 1J", "IndRS": "Ind-RS"})
-                irs_cols = ["Industrie", "Sektor", "Titel", "Ind-RS", "RS 1W",
-                            "RS 1M", "RS 3M", "RS 6M", "RS 1J"]
-                irs_view = irs_view[[c for c in irs_cols if c in irs_view.columns]]
-
-                def col_rank(v):
-                    if pd.isna(v):
-                        return ""
-                    if v >= 80:
-                        return "background-color: rgba(63,224,160,0.8); color: #fff"
-                    if v >= 50:
-                        return "background-color: rgba(63,224,160,0.35); color: #fff"
-                    if v < 20:
-                        return "background-color: rgba(224,90,90,0.7); color: #fff"
-                    return "background-color: rgba(224,90,90,0.3); color: #fff"
-
-                rank_cols = [c for c in irs_view.columns
-                             if c.startswith("RS ") or c == "Ind-RS"]
-                st.dataframe(
-                    irs_view.style.map(col_rank, subset=rank_cols)
-                    .format({c: fmt_num("{:.0f}") for c in rank_cols}),
-                    use_container_width=True, hide_index=True,
-                    height=min(42 + 35 * len(irs_view), 700))
+                render_industry_block(ind_rs, load_scan_snapshot(), key="scan",
+                                      with_top=False)
 
         st.caption(
             f"Stand {load_data_meta().get('last_date', '?')} · ATR% = ATR14/Kurs · "

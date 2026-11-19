@@ -92,33 +92,85 @@ def scan_mask(ind: dict, master: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     return m
 
 
-def industry_rs(ind: dict, master: pd.DataFrame, min_n: int = 3) -> tuple:
-    """Relative Staerke je Industrie (Steve Jacobs' "One Rule").
+# Fenster und Gewichte des RS-Mix wie im 14-Uhr-Briefing ("Branchen-Staerke")
+RS_WINDOWS = {"d": 1, "w": 5, "m": 21, "q": 63, "h": 126, "y": 252}
+RS_WEIGHTS = {"w": 1, "m": 2, "q": 3, "h": 2, "y": 1}
 
-    Je Industrie der Median der Mitglieder-Performance ueber 1W/1M/3M/6M/1Y,
-    jeweils als Perzentilrang 1-99 ueber alle Industrien. Composite = Mittel
-    der Raenge 1W/1M/3M/6M (das Jahr bleibt als Info), daraus IndRS 1-99.
-    Rueckgabe: (Tabelle je Industrie, IndRS je Ticker).
+
+def rank99(s: pd.Series) -> pd.Series:
+    """Rang 0-99 wie im Briefing: bester Wert 99, schlechtester 0."""
+    n = int(s.notna().sum())
+    if n < 2:
+        return pd.Series(99.0, index=s.index).where(s.notna())
+    return ((s.rank(method="average") - 1) / (n - 1) * 99).round()
+
+
+def _group_rs(rows: pd.DataFrame, key: str, min_n: int) -> pd.DataFrame:
+    """Je Gruppe: Median der Mitglieder je Fenster, daraus Raenge, Mix und RS."""
+    grp = rows.groupby(key)
+    tbl = pd.DataFrame({"n": grp.size()})
+    for k in RS_WINDOWS:
+        tbl[f"med_{k}"] = grp[k].median()
+    tbl = tbl[tbl["n"] >= min_n].copy()
+    for k in RS_WINDOWS:
+        tbl[k] = rank99(tbl[f"med_{k}"])
+    tbl["comp"] = (sum(tbl[k] * w for k, w in RS_WEIGHTS.items())
+                   / sum(RS_WEIGHTS.values())).round(2)
+    tbl["rs"] = rank99(tbl["comp"])
+    return tbl
+
+
+def industry_rs(ind: dict, master: pd.DataFrame, min_n: int = 3,
+                min_cap: float = 1e9) -> tuple:
+    """Relative Staerke je Industrie und je Sektor – der RS-Baustein des
+    14-Uhr-Briefings (nach Steve Jacobs' "One Rule").
+
+    Grundlage ist das Universum ab `min_cap` Boersenwert mit der
+    Nasdaq-Brancheneinteilung. Je Gruppe zaehlt der Median der Mitglieder
+    ueber Tag/Woche/Monat/Quartal/Halbjahr/Jahr; jedes Fenster wird ueber
+    alle Gruppen als Rang 0-99 gewertet. Mix = Woche 1, Monat 2, Quartal 3,
+    Halbjahr 2, Jahr 1; der Rang des Mix ist der RS. Sektoren bekommen
+    zusaetzlich den Quadranten aus Woche gegen Monat (stark / verbessert /
+    schwaecht ab / schwach, Grenze jeweils Rang 50).
+
+    Rueckgabe: (Industrie-Tabelle, Sektor-Tabelle, IndRS je Ticker). Der
+    IndRS gilt auch fuer Titel unter `min_cap` – ueber ihre Industrie.
     """
     C = ind["C"]
-    last = {w: ind[f"ret{n}"].iloc[-1] for w, n in
-            (("1W", 5), ("1M", 21), ("3M", 63), ("6M", 126), ("1Y", 252))}
-    meta = master.set_index("Ticker")[["Sector", "Industry"]].reindex(C.columns)
-    rows = pd.DataFrame(last).join(meta)
-    rows = rows[rows["Industry"].notna() & (rows["Industry"] != "Unknown")]
-    grp = rows.groupby("Industry")
-    tbl = grp[["1W", "1M", "3M", "6M", "1Y"]].median()
-    tbl["n"] = grp.size()
-    tbl["Sector"] = grp["Sector"].agg(lambda s: s.mode().iloc[0] if len(s) else "")
-    tbl = tbl[tbl["n"] >= min_n]
-    for w in ("1W", "1M", "3M", "6M", "1Y"):
-        tbl[f"rs_{w}"] = (tbl[w].rank(pct=True) * 98 + 1).round()
-    comp = tbl[["rs_1W", "rs_1M", "rs_3M", "rs_6M"]].mean(axis=1)
-    tbl["IndRS"] = (comp.rank(pct=True) * 98 + 1).round()
-    tbl = tbl.sort_values("IndRS", ascending=False)
-    tbl.index.name = "Industry"
-    per_ticker = rows["Industry"].map(tbl["IndRS"])
-    return tbl, per_ticker
+    rows = pd.DataFrame({k: ind[f"ret{n}"].iloc[-1] * 100
+                         for k, n in RS_WINDOWS.items() if k != "d"})
+    rows["d"] = ind["chg"].iloc[-1] * 100
+    rows["dv20"] = ind["dvol20"].iloc[-1]
+    meta = master.set_index("Ticker")[["Sector", "Industry", "MarketCap"]]
+    rows = rows.join(meta.reindex(C.columns))
+    rows = rows[(rows["MarketCap"] >= min_cap)
+                & rows["Industry"].notna() & (rows["Industry"] != "Unknown")]
+
+    ind_tbl = _group_rs(rows, "Industry", min_n)
+    ind_tbl["Sector"] = rows.groupby("Industry")["Sector"].agg(
+        lambda s: s.mode().iloc[0] if len(s.dropna()) else "")
+    by_dv = rows.sort_values("dv20", ascending=False).reset_index()
+    ind_tbl["syms"] = by_dv.groupby("Industry")["Ticker"].agg(
+        lambda t: "|".join(t.head(8)))
+    ind_tbl = (ind_tbl.rename(columns={"rs": "IndRS"})
+               .sort_values(["IndRS", "comp"], ascending=False))
+    ind_tbl.index.name = "Industry"
+
+    sec_rows = rows[rows["Sector"].notna() & (rows["Sector"] != "Unknown")]
+    sec_tbl = _group_rs(sec_rows, "Sector", min_n).rename(columns={"rs": "SecRS"})
+    w_ok, m_ok = sec_tbl["w"] >= 50, sec_tbl["m"] >= 50
+    sec_tbl["Quadrant"] = np.select(
+        [w_ok & m_ok, w_ok & ~m_ok, ~w_ok & m_ok],
+        ["stark", "verbessert", "schwaecht ab"], default="schwach")
+    sec_tbl = sec_tbl.sort_values(["SecRS", "comp"], ascending=False)
+    sec_tbl.index.name = "Sector"
+
+    order = ["n", "comp"] + list(RS_WINDOWS) + [f"med_{k}" for k in RS_WINDOWS]
+    ind_out = ind_tbl.reset_index()[["Industry", "Sector", "IndRS"] + order + ["syms"]]
+    sec_out = sec_tbl.reset_index()[["Sector", "SecRS", "Quadrant"] + order]
+    per_ticker = meta.reindex(C.columns)["Industry"].map(
+        ind_tbl["IndRS"])
+    return ind_out, sec_out, per_ticker
 
 
 def snapshot(ind: dict, master: pd.DataFrame) -> pd.DataFrame:
@@ -155,12 +207,25 @@ def snapshot(ind: dict, master: pd.DataFrame) -> pd.DataFrame:
         "SMA50": last["sma50"], "SMA200": last["sma200"],
         "Stage": stage,
         "RS": rs,
+        "Perf1W%": last["ret5"] * 100,
         "Perf1M%": last["ret21"] * 100,
         "Perf3M%": last["ret63"] * 100,
         "Perf6M%": last["ret126"] * 100,
         "FromHigh%": (last["C"] / hi - 1) * 100,
     })
     snap.index.name = "Ticker"
+    # Unterphase wie in der App (Stage-Analyse): 2B/4B = neues 20-Tage-
+    # Hoch/-Tief, 2C/4C = 3 ATR vom EMA10, 1B/3A = ueber SMA50
+    ext10 = (last["C"] - last["ema10"]) / last["atr14"].where(last["atr14"] > 0)
+    sma50, hi20, lo20 = last["sma50"], last["hi20"], last["lo20"]
+    sub = pd.Series("", index=C.columns, dtype=object)
+    sub[s1] = np.where(last["C"][s1] > sma50[s1], "1B", "1A")
+    sub[s2] = np.where(ext10[s2] >= 3, "2C",
+                       np.where(last["C"][s2] > hi20[s2], "2B", "2A"))
+    sub[s3] = np.where(last["C"][s3] >= sma50[s3], "3A", "3B")
+    sub[s4] = np.where(ext10[s4] <= -3, "4C",
+                       np.where(last["C"][s4] < lo20[s4], "4B", "4A"))
+    snap["SubStage"] = sub.replace("", np.nan)
     cols = ["Name", "Exchange", "Sector", "Industry", "MarketCap",
             "SP500", "NASDAQ", "R2000"] + (["IndRS"] if "IndRS" in master else [])
     meta = master.set_index("Ticker")[cols]
