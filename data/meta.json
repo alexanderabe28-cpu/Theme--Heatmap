@@ -1,11 +1,11 @@
 {
-  "last_run_utc": "2026-11-19 03:54",
-  "last_date": "2026-11-18",
+  "last_run_utc": "2026-11-20 03:46",
+  "last_date": "2026-11-19",
   "tickers_requested": 4423,
-  "tickers_loaded": 4422,
-  "tickers_failed": 1,
-  "scan_hits": 70,
-  "industries_ranked": 138,
+  "tickers_loaded": 4423,
+  "tickers_failed": 0,
+  "scan_hits": 71,
+  "industries_ranked": 117,
   "scan_config": {
     "min_price": 5,
     "min_market_cap": 300000000,
