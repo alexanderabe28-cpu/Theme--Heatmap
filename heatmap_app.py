@@ -642,10 +642,14 @@ def render_treemap(df: pd.DataFrame, tf: str, limit: float, key: str,
     else:
         df["ShortName"] = ""
         df["Name"] = df["Ticker"]
-    # Stage nur anhaengen, wenn vorhanden (Futures/OvsD haben keine)
+    # Stage / RS nur anhaengen, wenn vorhanden (Futures/OvsD haben keine)
     has_stage = "Stage" in df.columns
-    cdata = ["Last", "1D", "1W", "2W", "4W", "Ticker", "ShortName",
-             "Name", "RVOLtxt", "EXTtxt"] + (["Stage"] if has_stage else [])
+    has_rs = "RS_comp" in df.columns
+    cdata = (["Last", "1D", "1W", "2W", "4W", "Ticker", "ShortName",
+              "Name", "RVOLtxt", "EXTtxt"]
+             + (["Stage"] if has_stage else [])
+             + (["RS_comp", "RS_rank"] if has_rs else []))
+    i_rs = 10 + (1 if has_stage else 0)
     fig = px.treemap(
         df,
         path=[px.Constant("Alle"), "Theme", label_col],
@@ -669,6 +673,8 @@ def render_treemap(df: pd.DataFrame, tf: str, limit: float, key: str,
             "4W: %{customdata[4]:.2f} %<br>"
             "RVOL: %{customdata[8]} · ATR-Ext: %{customdata[9]}"
             + ("<br>Stage: %{customdata[10]}" if has_stage else "")
+            + (f"<br>RS Comp: %{{customdata[{i_rs}]:+.2f}} · "
+               f"RS Rang %{{customdata[{i_rs + 1}]:.0f}}" if has_rs else "")
             + "<extra></extra>"
         ),
         marker=dict(line=dict(width=1.5, color=NAVY_BG)),
@@ -1111,6 +1117,64 @@ def render_industry_block(ind_rs: pd.DataFrame, snap: pd.DataFrame,
                "im 1-Mrd-Universum). Stage = Unterphase aus dem Nachtlauf.")
 
 
+# ---------------- RS Composite je Titel (14-Uhr-Briefing / "RS Central") ----------------
+RS_BENCH = ["QQQ", "SMH", "XLK", "IGV"]      # Vergleichswerte wie im Briefing
+RS_LOOKS = [1, 5, 21, 63, 126]               # Handelstage
+RS_START_POS = 12                            # Start-Setup: >= 12 von 20 positiv
+
+
+@st.cache_data(ttl=QUOTE_TTL, show_spinner=False)
+def rs_composite(tickers: tuple) -> pd.DataFrame:
+    """RS Composite wie im 14-Uhr-Briefing: Mittel aus bis zu 20 Vergleichen
+    (4 Vergleichswerte x 5 Zeitraeume) der Kursaenderung des Titels minus
+    der des Vergleichswerts, geteilt durch die ATR14 des Titels in Prozent.
+    Ueber 0 = im Schnitt staerker als die Vergleichswerte. RS_pos = Zahl der
+    positiven Vergleiche, RS_rank = Rang 0-99 des Composite im Universum."""
+    d = fetch_bulk(tuple(tickers), HISTORY_PERIOD)
+    C = d.get("Close")
+    if C is None or C.empty:
+        return pd.DataFrame()
+    H, L = d.get("High", C), d.get("Low", C)
+    B = fetch_closes(tuple(RS_BENCH), HISTORY_PERIOD)
+    bench = {b: B[b].dropna() for b in RS_BENCH if b in B.columns}
+    out = {}
+    for t in C.columns:
+        c = C[t].dropna()
+        if len(c) < 30 or not bench:
+            continue
+        h, l = H[t].reindex(c.index), L[t].reindex(c.index)
+        tr = pd.concat([h - l, (h - c.shift()).abs(),
+                        (l - c.shift()).abs()], axis=1).max(axis=1)
+        atr_pct = tr.ewm(alpha=1 / 14, adjust=False).mean().iloc[-1] / c.iloc[-1] * 100
+        if not atr_pct > 0:
+            continue
+        vals = []
+        for bc in bench.values():
+            for n in RS_LOOKS:
+                if len(c) > n and len(bc) > n:
+                    rt = (c.iloc[-1] / c.iloc[-(n + 1)] - 1) * 100
+                    rb = (bc.iloc[-1] / bc.iloc[-(n + 1)] - 1) * 100
+                    vals.append((rt - rb) / atr_pct)
+        if vals:
+            out[t] = {"RS_comp": float(np.mean(vals)),
+                      "RS_pos": int(sum(v > 0 for v in vals)), "RS_n": len(vals)}
+    df = pd.DataFrame(out).T
+    if df.empty:
+        return df
+    df = df.astype({"RS_comp": float, "RS_pos": int, "RS_n": int})
+    df["RS_rank"] = ((df["RS_comp"].rank(method="average") - 1)
+                     / max(len(df) - 1, 1) * 99).round()
+    df.index.name = "Ticker"
+    return df
+
+
+def col_rs_comp(v):
+    if pd.isna(v):
+        return ""
+    return ("color: #3fe0a0; font-weight: 700" if v > 0
+            else "color: #e05a5a; font-weight: 700" if v < 0 else "")
+
+
 VIEWS = ["Sector-Map", "Stock Map", "Futures / Makro", "OvsD", "Generaele",
          "Breadth", "Scanner", "Theme Tracker", "Kalender", "Universum"]
 # Bewusst kein st.tabs: Streamlit fuehrt bei jedem Rerun ALLE Tab-Bloecke aus,
@@ -1171,11 +1235,16 @@ if view == "Sector-Map":
             sig = fetch_signals(tickers)
         with st.spinner("Bestimme Stages..."):
             stages = stage_analysis(tickers)
+        with st.spinner("Berechne RS Composite..."):
+            rs_df = rs_composite(tickers)        # gleicher Download-Cache
         df = prepare(universe, closes, sizes, tf)
         if not stages.empty:
             df = df.merge(stages[["Stage"]], left_on="Ticker",
                           right_index=True, how="left")
             df["Stage"] = df["Stage"].fillna("–")
+        if not rs_df.empty:
+            df = df.merge(rs_df[["RS_comp", "RS_rank"]], left_on="Ticker",
+                          right_index=True, how="left")
         if df.empty:
             st.error("Keine Kursdaten geladen. Meist drosselt Yahoo gerade "
                      "die Abrufe – in einer Minute nochmal 'Jetzt "
@@ -1257,6 +1326,14 @@ if view == "Sector-Map":
                                         left_on="Ticker", right_index=True,
                                         how="left")
                 tbl_all.insert(3, "Stage", tbl_all.pop("Stage"))
+            if not rs_df.empty:
+                tbl_all = tbl_all.merge(rs_df, left_on="Ticker",
+                                        right_index=True, how="left")
+                pos = 4 if "Stage" in tbl_all.columns else 3
+                tbl_all.insert(pos, "RS Comp", tbl_all.pop("RS_comp"))
+                tbl_all.insert(pos + 1, "RS Rang", tbl_all.pop("RS_rank"))
+                tbl_all.insert(pos + 2, "RS +/20", tbl_all.pop("RS_pos"))
+                tbl_all = tbl_all.drop(columns=["RS_n"])
             tbl_all = (tbl_all.sort_values("1D", ascending=False)
                        .reset_index(drop=True))
             pct_c = ["1D", "1W", "2W", "4W"]
@@ -1279,10 +1356,28 @@ if view == "Sector-Map":
                                     **{c: "{:+.2f} %" for c in pct_c}}.items()}))
             if "Stage" in tbl_all.columns:
                 styled_all = styled_all.map(col_stage, subset=["Stage"])
+            if "RS Comp" in tbl_all.columns:
+                styled_all = (styled_all
+                              .map(col_rs_comp, subset=["RS Comp"])
+                              .map(col_rank99, subset=["RS Rang"])
+                              .map(lambda v: "color: #3fe0a0; font-weight: 700"
+                                   if pd.notna(v) and v >= RS_START_POS else "",
+                                   subset=["RS +/20"])
+                              .format({"RS Comp": fmt_num("{:+.2f}"),
+                                       "RS Rang": fmt_num("{:.0f}"),
+                                       "RS +/20": fmt_num("{:.0f}")}))
             st.dataframe(styled_all, use_container_width=True,
                          hide_index=True, height=42 + 35 * len(tbl_all))
-            st.caption("Sortiert nach 1D · Spaltenkopf anklicken zum "
-                       "Umsortieren · RVOL >= 1.5 hervorgehoben.")
+            st.caption(
+                "Sortiert nach 1D · Spaltenkopf anklicken zum Umsortieren · "
+                "RVOL >= 1.5 hervorgehoben · RS Comp (14-Uhr-Briefing) = Mittel "
+                f"der Mehrleistung gegen {', '.join(RS_BENCH)} ueber "
+                f"{', '.join(map(str, RS_LOOKS))} Handelstage in ATR-Einheiten "
+                "des Titels, ueber 0 = staerker als die Vergleichswerte · "
+                "RS Rang = Rang 0-99 des Composite in dieser Map · RS +/20 = "
+                f"positive Vergleiche, ab {RS_START_POS} = Start-Setup. Die "
+                "Vergleichswerte sind Tech-lastig; fuer Energie oder Versorger "
+                "misst das die Staerke gegen Tech, nicht gegen den Gesamtmarkt.")
 
 # ----- Tab 2: Futures/Makro -----
 if view == "Futures / Makro":
