@@ -1,72 +1,53 @@
 Ticker,Name,Sector,Industry
-A,Agilent Technologies Inc.,Industrials,Biotechnology: Laboratory Analytical Instruments
-ABNB,Airbnb Inc.,Consumer Discretionary,Diversified Commercial Services
 ADPT,Adaptive Biotechnologies Corporation,Health Care,Biotechnology: Biological Products (No Diagnostic Substances)
 AJG,Arthur J. Gallagher & Co.,Finance,Specialty Insurers
-AMPL,Amplitude Inc.,Technology,Computer Software: Prepackaged Software
-AURA,Aura Biosciences Inc.,Health Care,Biotechnology: Biological Products (No Diagnostic Substances)
+ALRM,Alarm.com Holdings Inc.,Technology,Computer Software: Prepackaged Software
+APPN,Appian Corporation,Technology,Computer Software: Prepackaged Software
+ARHS,Arhaus Inc.,Consumer Discretionary,Other Specialty Stores
 AVPT,AvePoint Inc.,Technology,Computer Software: Prepackaged Software
-BLMN,Bloomin' Brands Inc.,Consumer Discretionary,Restaurants
-BRKR,Bruker Corporation,Industrials,Biotechnology: Laboratory Analytical Instruments
-BTSG,BrightSpring Health Services Inc.,Health Care,Medical/Nursing Services
-CAKE,Cheesecake Factory Incorporated (The),Consumer Discretionary,Restaurants
-CALY,Callaway Golf Company,Consumer Discretionary,Recreational Games/Products/Toys
-CDW,CDW Corporation,Consumer Discretionary,Catalog/Specialty Distribution
-CERT,Certara Inc.,Technology,Computer Software: Prepackaged Software
+BIIB,Biogen Inc.,Health Care,Biotechnology: Biological Products (No Diagnostic Substances)
+CBRL,Cracker Barrel Old Country Store Inc,Consumer Discretionary,Restaurants
 CGON,CG Oncology Inc. Common stock,Health Care,Biotechnology: Biological Products (No Diagnostic Substances)
 CHA,Chagee Holdings Limited American Depositary Shares,Consumer Discretionary,Restaurants
-CNNE,Cannae Holdings Inc.,Consumer Discretionary,Restaurants
 COCO,The Vita Coco Company Inc.,Consumer Staples,Beverages (Production/Distribution)
+COLD,Americold Realty Trust Inc.,Real Estate,Real Estate Investment Trusts
 CTKB,Cytek Biosciences Inc.,Industrials,Biotechnology: Laboratory Analytical Instruments
+DCTH,Delcath Systems Inc.,Health Care,Medical/Dental Instruments
+DIN,Dine Brands Global Inc.,Consumer Discretionary,Restaurants
+DIS,Walt Disney Company (The),Consumer Discretionary,Services-Misc. Amusement & Recreation
 DLTR,Dollar Tree Inc.,Consumer Discretionary,Department/Specialty Retail Stores
-DRI,Darden Restaurants Inc.,Consumer Discretionary,Restaurants
+ENOV,Enovis Corporation,Health Care,Industrial Specialties
+EPC,Edgewell Personal Care Company,Consumer Discretionary,Package Goods/Cosmetics
 EVC,Entravision Communications Corporation,Industrials,Broadcasting
-EXTR,Extreme Networks Inc.,Telecommunications,Computer Communications Equipment
-FIGS,FIGS Inc.,Consumer Discretionary,Apparel
-FNKO,Funko Inc.,Consumer Discretionary,Recreational Games/Products/Toys
-FROG,JFrog Ltd.,Technology,Computer Software: Prepackaged Software
-FTDR,Frontdoor Inc.,Consumer Discretionary,Diversified Commercial Services
-GCT,GigaCloud Technology Inc Class A,Consumer Discretionary,Catalog/Specialty Distribution
-GIII,G-III Apparel Group LTD.,Consumer Discretionary,Apparel
+EW,Edwards Lifesciences Corporation,Health Care,Industrial Specialties
+FWONK,Liberty Media Corporation Series C,Industrials,Broadcasting
+GEN,Gen Digital Inc.,Technology,Computer Software: Prepackaged Software
 GILD,Gilead Sciences Inc.,Health Care,Biotechnology: Biological Products (No Diagnostic Substances)
 GTN,Gray Media Inc.,Industrials,Broadcasting
 HCSG,Healthcare Services Group Inc.,Health Care,Hospital/Nursing Management
-HNI,HNI Corporation,Consumer Discretionary,Office Equipment/Supplies/Services
 HTHT,H World Group Limited American Depositary Shares,Consumer Discretionary,Hotels/Resorts
-IMVT,Immunovant Inc.,Health Care,Biotechnology: Biological Products (No Diagnostic Substances)
 INN,Summit Hotel Properties Inc.,Real Estate,Real Estate Investment Trusts
 KHC,The Kraft Heinz Company,Consumer Staples,Packaged Foods
 KR,Kroger Company (The),Consumer Staples,Food Chains
 KTB,Kontoor Brands Inc. Common Stock ,Industrials,Garments and Clothing
 LFST,LifeStance Health Group Inc.,Health Care,Medical/Nursing Services
-LILAK,Liberty Latin America Ltd.,Telecommunications,Cable & Other Pay Television Services
-LYV,Live Nation Entertainment Inc.,Consumer Discretionary,Services-Misc. Amusement & Recreation
+LIVN,LivaNova PLC,Health Care,Biotechnology: Electromedical & Electrotherapeutic Apparatus
 MAS,Masco Corporation,Industrials,Industrial Specialties
-NP,Neptune Insurance Holdings Inc.,Finance,Specialty Insurers
 NTSK,Netskope Inc.,Technology,Computer Software: Prepackaged Software
-OABI,OmniAb Inc.,Health Care,Biotechnology: Commercial Physical & Biological Resarch
-OMC,Omnicom Group Inc.,Consumer Discretionary,Advertising
-ORKA,Oruka Therapeutics Inc.,Health Care,Biotechnology: In Vitro & In Vivo Diagnostic Substances
-PCTY,Paylocity Holding Corporation,Technology,Computer Software: Prepackaged Software
 PENN,PENN Entertainment Inc.,Consumer Discretionary,Hotels/Resorts
-PRCH,Porch Group Inc.,Technology,Computer Software: Prepackaged Software
 PRG,PROG Holdings Inc.,Consumer Discretionary,Diversified Commercial Services
-PTRN,Pattern Group Inc. Series A,Consumer Discretionary,Catalog/Specialty Distribution
-PVH,PVH Corp.,Industrials,Garments and Clothing
+REPL,Replimune Group Inc.,Health Care,Biotechnology: Biological Products (No Diagnostic Substances)
 REYN,Reynolds Consumer Products Inc.,Consumer Discretionary,Containers/Packaging
-RPD,Rapid7 Inc.,Technology,Computer Software: Prepackaged Software
 SAIL,SailPoint Inc.,Technology,Computer Software: Prepackaged Software
-SENS,Senseonics Holdings Inc.,Health Care,Medical/Dental Instruments
+SG,Sweetgreen Inc.,Consumer Discretionary,Restaurants
 SIBN,SI-BONE Inc.,Health Care,Medical/Dental Instruments
+SIRI,SiriusXM Holdings Inc.,Consumer Discretionary,Broadcasting
 SJM,The J.M. Smucker Company,Consumer Staples,Packaged Foods
-SLDE,Slide Insurance Holdings Inc.,Finance,Property-Casualty Insurers
-SONO,Sonos Inc.,Consumer Staples,Consumer Electronics/Appliances
-SRZN,Surrozen Inc.,Health Care,Biotechnology: Biological Products (No Diagnostic Substances)
-STAA,STAAR Surgical Company,Health Care,Ophthalmic Goods
-TARS,Tarsus Pharmaceuticals Inc.,Health Care,Biotechnology: Biological Products (No Diagnostic Substances)
+SMA,SmartStop Self Storage REIT Inc.,Real Estate,Real Estate Investment Trusts
+SWIM,Latham Group Inc.,Industrials,Plastic Products
 TDC,Teradata Corporation,Technology,Computer Software: Prepackaged Software
-TENB,Tenable Holdings Inc.,Technology,Computer Software: Prepackaged Software
 TGT,Target Corporation,Consumer Discretionary,Department/Specialty Retail Stores
+ULCC,Frontier Group Holdings Inc.,Consumer Discretionary,Air Freight/Delivery Services
 UNFI,United Natural Foods Inc.,Consumer Discretionary,Food Distributors
-VSNT,Versant Media Group Inc. Class A Common Stock ,Industrials,Broadcasting
+WMG,Warner Music Group Corp.,Consumer Discretionary,Services-Misc. Amusement & Recreation
 WTW,Willis Towers Watson Public Limited Company,Finance,Specialty Insurers
