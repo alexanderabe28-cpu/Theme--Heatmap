@@ -1176,7 +1176,7 @@ def col_rs_comp(v):
 
 
 VIEWS = ["Sector-Map", "Stock Map", "Futures / Makro", "OvsD", "Generaele",
-         "Breadth", "Scanner", "Theme Tracker", "Kalender", "Universum"]
+         "Breadth", "Correction Risk", "Scanner", "Theme Tracker", "Kalender", "Universum"]
 # Bewusst kein st.tabs: Streamlit fuehrt bei jedem Rerun ALLE Tab-Bloecke aus,
 # auch die unsichtbaren. Da in fast jedem Block ein Yahoo-Download steckt,
 # dauert ein Durchlauf so ueber eine Minute. Mit der Auswahl laeuft nur der
@@ -2012,6 +2012,12 @@ def load_scanner_config() -> dict:
     with open(SCANNER_CONFIG, encoding="utf-8-sig") as f:
         return {k: v for k, v in _json.load(f).items() if not k.startswith("_")}
 
+
+# ----- Correction Risk v1.1 (Schattenmodus, nur S&P 500) -----
+# Regeln eingefroren, Doku in docs/correction_risk/. Keine Ampel, keine Alerts.
+if view == "Correction Risk":
+    from tab_correction_risk import render_correction_risk_tab
+    render_correction_risk_tab()
 
 if view == "Scanner":
     snap = load_scan_snapshot()

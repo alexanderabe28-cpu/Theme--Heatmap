@@ -1,0 +1,341 @@
+//@version=6
+// ─────────────────────────────────────────────────────────────────────────────
+// Correction Risk v1.1 (Eigenbau nach dem Vorbild des TSF Correction Risk Model)
+// Status: Schattenmodus, nicht belegt. Kein Handelssignal.
+//
+// Gate         Index-ETF schließt höchstens 3 % unter seinem 252-Tage-Schlusshoch.
+//              S&P 500 = SPY, NASDAQ = QQQ.
+// Bestätigung  Reihe steht auf der Risk-off-Seite ihrer SMA50 UND ihre
+//              20-Tage-Veränderung zeigt in dieselbe Richtung:
+//                C  Credit      HYG/IEF fällt
+//                B  Breadth     RSP fällt
+//                R  Rotation    XLY/XLP fällt
+//                V  Volatility  VIX steigt
+// Level        Zahl der Bestätigungen an Gate-Tagen (0–4). Warnzustand = Level ≥ 3.
+//              Außerhalb des Gates gibt das Modell kein Level aus.
+//              Namen nach TSF: 1 ELEVATED, 2 HIGH, 3 VERY HIGH, 4 EXTREME. Die Namen sind
+//              übernommen, die Zahlen dahinter sind die des Eigenbaus (siehe Backtest).
+// Marker       Erster Tag, an dem das Level höher ist als an den 20 Sessions davor
+//              (Erstsignal): Dreieck über dem Balken, darunter "LEVEL n" mit den
+//              Bestätigungen. Der Tooltip nennt Datum und Abstand zum Hoch.
+// Fenster      Risikofenster = 45 Sessions nach dem letzten Tag im Warnzustand. In
+//              diesem Fenster misst der Backtest die Rückgänge. Kein Ausstiegssignal:
+//              Kasse im Fenster brachte 2000–2026 4,9 % p. a. gegen 7,8 % Buy and Hold.
+// Zu TSF       Dort lösen eigene Signale die Level 1, 2 und 4 aus, Bestätigungen (x/3)
+//              stufen sie hoch. Diese Auslöser sind nicht veröffentlicht. Hier ist das
+//              Level allein die Zahl der Bestätigungen nahe am Hoch.
+// Alerts       Über alert(): neuer Marker und Beginn des Warnzustands, jeweils für
+//              den Index des Charts und zum Balkenschluss.
+//
+// Alle Reihen sind Tagesschlusskurse, dividendenbereinigt wie im Backtest.
+// Gerechnet wird immer auf Tagesbasis, auch im Wochen- oder Intraday-Chart.
+// Im Wochenchart zeigen Säulen und Tabelle den Stand am Wochenschluss, Bänder und
+// Marker erfassen jeden Tag der Woche. Am laufenden Tag ist der Stand vorläufig,
+// er gilt erst mit dem Schlusskurs (VIX: 16:15 ET).
+// Der Verlauf beginnt 2007, weil HYG erst seitdem handelt. Auf Charts mit anderem
+// Handelsschluss als New York (Europa, Asien) erscheint der Stand einen Tag später.
+//
+// Backtest (Rückgang ≥ 5 % binnen 45 Sessions nach einem Tag im Warnzustand):
+//   S&P 500, 2000–2026:  41,3 % gegen 23,1 % Basis. Im blinden Zeitraum
+//                        1999–2007 aber 7,9 % gegen 21,6 %.
+//   NASDAQ, 2000–2026:   43,5 % gegen 32,5 % Basis, seit 2017 31,1 % gegen 32,5 %.
+//   Tabellenzeile "Quote / Basis": dieselbe Auswertung je Level 0 / 1 / 2 / 3 / 4.
+//   S&P 500 18,6 / 24,8 / 27,8 / 42,2 / 38,3 %, NASDAQ 29,1 / 35,3 / 37,9 / 39,5 / 53,1 %.
+//   Beim S&P 500 liegt ELEVATED an der Basis und EXTREME nicht über VERY HIGH.
+// Marker allein (Erstsignal ab Level 3, 2000–2026): S&P 500 13 Treffer in 46 Signalen
+// bei 23,1 % Basis, NASDAQ 13 in 30 bei 32,5 % Basis. Als Einzelsignal nicht belegt.
+// Die Parameter sind seit dem 20.11.2026 eingefroren. Jede Änderung macht
+// diese Zahlen ungültig.
+// ─────────────────────────────────────────────────────────────────────────────
+indicator("Correction Risk v1.1 (Schattenmodus)", shorttitle = "CorrRisk 1.1", overlay = false, precision = 0, max_labels_count = 500)
+
+// ── Eingefrorene Parameter (Spec v1.1) ───────────────────────────────────────
+const float GATE_PCT = 0.03
+const int   GATE_LEN = 252
+const int   SMA_LEN  = 50
+const int   MOM_LEN  = 20
+const int   WARN_LVL = 3
+const int   EP_GAP   = 20
+const int   RISK_LEN = 45
+
+// ── Eingaben ─────────────────────────────────────────────────────────────────
+string GRP = "Anzeige"
+string idxIn = input.string("Auto", "Index für Säulen und Bänder", options = ["Auto", "S&P 500", "NASDAQ"], group = GRP,
+     tooltip = "Auto: NASDAQ-Charts (QQQ, NDX, IXIC, NQ) zeigen die NASDAQ-Variante, alle anderen das S&P-500-Modell.")
+bool   showBands = input.bool(true, "Bänder im Kurschart", group = GRP,
+     tooltip = "Farbe nach Level: orange = 2 HIGH, rot = 3 VERY HIGH, violett = 4 EXTREME. Nur an Gate-Tagen.")
+bool   showWin   = input.bool(true, "Risikofenster (45 Sessions nach Warnzustand)", group = GRP,
+     tooltip = "Blasses Band vom ersten Tag im Warnzustand bis 45 Sessions nach dem letzten. Messfenster des Backtests, kein Ausstiegssignal.")
+bool   showMarks = input.bool(true, "Level-Marker im Kurschart", group = GRP,
+     tooltip = "Dreieck und Beschriftung am ersten Tag, an dem das Level höher ist als an den 20 Sessions davor.")
+int    minMark   = input.int(2, "Marker ab Level", minval = 1, maxval = 4, group = GRP)
+bool   markComps = input.bool(true, "Bestätigungen am Marker (C B R V)", group = GRP,
+     tooltip = "Schreibt an den Marker, welche Bestätigungen an waren, zum Beispiel LEVEL 3 · BRV. Ohne Haken steht dort nur das Level.")
+bool   doAlerts  = input.bool(true, "Alerts: neuer Marker, Beginn Warnzustand", group = GRP,
+     tooltip = "Wirkt nur, wenn du einen Alert auf die alert()-Aufrufe dieses Skripts anlegst. Gemeldet wird der Index dieses Charts.")
+bool   showTable = input.bool(true, "Tabelle", group = GRP)
+string posIn     = input.string("oben rechts", "Position der Tabelle", options = ["oben rechts", "oben links", "unten rechts", "unten links"], group = GRP)
+string sizeIn    = input.string("klein", "Schrift der Tabelle", options = ["winzig", "klein", "normal"], group = GRP)
+
+// ── Datenreihen: dividendenbereinigte Tagesschlusskurse ──────────────────────
+adj(simple string sym) => ticker.modify(sym, adjustment = adjustment.dividends)
+
+string T_SPY = adj("AMEX:SPY")
+string T_QQQ = adj("NASDAQ:QQQ")
+string T_HYG = adj("AMEX:HYG")
+string T_IEF = adj("NASDAQ:IEF")
+string T_RSP = adj("AMEX:RSP")
+string T_XLY = adj("AMEX:XLY")
+string T_XLP = adj("AMEX:XLP")
+string T_VIX = "CBOE:VIX"
+
+// ── Hilfen ───────────────────────────────────────────────────────────────────
+pct(float x) =>
+    na(x) ? "–" : (x < -0.0005 ? "−" : "") + str.replace(str.tostring(math.abs(x) * 100, "0.0"), ".", ",") + " %"
+
+// Bestätigungen als Zahl: C = 1, B = 2, R = 4, V = 8
+compText(int code) =>
+    (code % 2 == 1 ? "C" : "") + (math.floor(code / 2) % 2 == 1 ? "B" : "") + (math.floor(code / 4) % 2 == 1 ? "R" : "") + (math.floor(code / 8) % 2 == 1 ? "V" : "")
+
+// ── Modell ───────────────────────────────────────────────────────────────────
+// Risk-off-Bestätigung einer Reihe. Rückgabe: [Signal, Reihe lang genug]
+riskOff(float src, bool upIsRiskOff) =>
+    float ma  = ta.sma(src, SMA_LEN)
+    float ref = src[MOM_LEN]
+    bool  ok  = not na(ma) and not na(ref)
+    bool  sig = upIsRiskOff ? (src > ma and src > ref) : (src < ma and src < ref)
+    [ok and sig, ok]
+
+// Gate eines Index. Läuft im Tageskontext des Index-ETF.
+gateOf() =>
+    float hi = ta.highest(close, GATE_LEN)
+    bool  ok = not na(hi) and bar_index >= GATE_LEN - 1
+    [ok and close >= (1 - GATE_PCT) * hi, close / hi - 1, ok]
+
+// Jüngstes Erstsignal eines Levels: höher als an den EP_GAP Sessions davor.
+// Rückgabe: [Zeit, Level, Bestätigungen, Abstand zum Hoch] am Signaltag
+lastSignal(int lvl, int code, float dist) =>
+    float prevMax = ta.highest(lvl, EP_GAP)[1]
+    bool  isNew   = not na(lvl) and not na(prevMax) and lvl > prevMax
+    [ta.valuewhen(isNew, time, 0), ta.valuewhen(isNew, lvl, 0), ta.valuewhen(isNew, code, 0), ta.valuewhen(isNew, dist, 0)]
+
+// Vollständiges Modell. Läuft im Tageskontext von SPY und holt die anderen Reihen dazu.
+model() =>
+    float hyg = request.security(T_HYG, "D", close)
+    float ief = request.security(T_IEF, "D", close)
+    float rsp = request.security(T_RSP, "D", close)
+    float xly = request.security(T_XLY, "D", close)
+    float xlp = request.security(T_XLP, "D", close)
+    // Der VIX schließt um 16:15 ET, SPY um 16:00 ET. Ohne lookahead käme der VIX-Schluss
+    // im Verlauf einen Tag zu spät an. Mit lookahead steht am Tag t der VIX-Schluss von t,
+    // wie im Backtest.
+    float vix = request.security(T_VIX, "D", close, lookahead = barmerge.lookahead_on)
+    [c, okC] = riskOff(hyg / ief, false)
+    [b, okB] = riskOff(rsp, false)
+    [r, okR] = riskOff(xly / xlp, false)
+    [v, okV] = riskOff(vix, true)
+    [gS, dS, okGS] = gateOf()
+    [gN, dN, okGN] = request.security(T_QQQ, "D", gateOf())
+    bool validS = okC and okB and okR and okV and okGS
+    bool validN = validS and okGN
+    int  n      = (c ? 1 : 0) + (b ? 1 : 0) + (r ? 1 : 0) + (v ? 1 : 0)
+    int  lvlS   = validS ? (gS ? n : 0) : na
+    int  lvlN   = validN ? (gN ? n : 0) : na
+    int  code   = (c ? 1 : 0) + (b ? 2 : 0) + (r ? 4 : 0) + (v ? 8 : 0)
+    [tS, kS, cS, xS] = lastSignal(lvlS, code, dS)
+    [tN, kN, cN, xN] = lastSignal(lvlN, code, dN)
+    // Jüngster Tag im Warnzustand und mit 2 Bestätigungen, für die Bänder in Wochen- und Monatscharts
+    int tWS = ta.valuewhen(lvlS >= WARN_LVL, time, 0)
+    int tTS = ta.valuewhen(lvlS == 2, time, 0)
+    int tWN = ta.valuewhen(lvlN >= WARN_LVL, time, 0)
+    int tTN = ta.valuewhen(lvlN == 2, time, 0)
+    int tFS = ta.valuewhen(lvlS >= 4, time, 0)
+    int tFN = ta.valuewhen(lvlN >= 4, time, 0)
+    // Sessions seit dem letzten Tag im Warnzustand, für das Risikofenster
+    int sWS = ta.barssince(lvlS >= WARN_LVL)
+    int sWN = ta.barssince(lvlN >= WARN_LVL)
+    [c, b, r, v, gS, dS, gN, dN, validS, validN, time, tS, kS, cS, xS, tN, kN, cN, xN, tWS, tTS, tWN, tTN, tFS, tFN, sWS, sWN]
+
+[cOn, bOn, rOn, vOn, gateS, distS, gateN, distN, okS, okN, dayS, tSigS, kSigS, cSigS, dSigS, tSigN, kSigN, cSigN, dSigN, tWarnS, tTwoS, tWarnN, tTwoN, tFourS, tFourN, sinceWS, sinceWN] = request.security(T_SPY, "D", model())
+
+// ── Zustand ──────────────────────────────────────────────────────────────────
+isNasdaqChart() =>
+    string t = str.upper(syminfo.ticker)
+    string r = str.upper(syminfo.root)
+    array.from("QQQ", "QQQM", "TQQQ", "ONEQ", "NDX", "IXIC", "NDQ", "NAS100", "US100", "USTEC").includes(t) or r == "NQ" or r == "MNQ"
+
+bool useNdq = idxIn == "NASDAQ" or (idxIn == "Auto" and isNasdaqChart())
+int  nConf  = (cOn ? 1 : 0) + (bOn ? 1 : 0) + (rOn ? 1 : 0) + (vOn ? 1 : 0)
+int  levelS = gateS ? nConf : 0
+int  levelN = gateN ? nConf : 0
+
+bool ok   = useNdq ? okN : okS
+bool gate = useNdq ? gateN : gateS
+bool warn = ok and gate and nConf >= WARN_LVL
+bool two  = ok and gate and nConf == 2
+
+// Liegt der Tag t im aktuellen Chartbalken? Im Tageschart ist das der Tag selbst, im Wochenchart die Woche.
+inBar(int t) =>
+    not na(t) and not na(dayS[1]) and t > dayS[1] and t <= dayS
+
+// Marker am Chartbalken, in dem das Erstsignal liegt
+int mkS = inBar(tSigS) ? kSigS : 0
+int mkN = inBar(tSigN) ? kSigN : 0
+int mk  = useNdq ? mkN : mkS
+
+// Bänder: im Tageschart der Stand des Tages, in Wochen- und Monatscharts jeder Balken mit mindestens einem solchen Tag
+bool htf      = timeframe.in_seconds() > 86400
+bool anyWarn  = inBar(useNdq ? tWarnN : tWarnS)
+bool anyTwo   = inBar(useNdq ? tTwoN : tTwoS)
+bool bandWarn = htf ? anyWarn : warn
+bool bandTwo  = htf ? anyTwo and not anyWarn : two
+bool anyFour  = inBar(useNdq ? tFourN : tFourS)
+bool bandFour = bandWarn and (htf ? anyFour : nConf >= 4)
+
+// Risikofenster: bis RISK_LEN Sessions nach dem letzten Tag im Warnzustand
+bool winS    = okS and not na(sinceWS) and sinceWS <= RISK_LEN
+bool winN    = okN and not na(sinceWN) and sinceWN <= RISK_LEN
+bool riskWin = useNdq ? winN : winS
+
+// Jüngster Marker ab der gewählten Schwelle, für die Tabelle
+var int lastTS = na
+var int lastKS = na
+var int lastTN = na
+var int lastKN = na
+if mkS >= minMark
+    lastTS := tSigS
+    lastKS := mkS
+if mkN >= minMark
+    lastTN := tSigN
+    lastKN := mkN
+
+// ── Darstellung ──────────────────────────────────────────────────────────────
+color C_L1   = #fab219
+color C_L2   = #ec835a
+color C_L3   = #d03b3b
+color C_L4   = #b04fd0
+color C_CALM = #3987e5
+color C_OFF  = color.new(#8a8f98, 55)
+
+// Abstufung nach TSF: Farbe und Name je Level
+lvlColor(int k) => k >= 4 ? C_L4 : k == 3 ? C_L3 : k == 2 ? C_L2 : k == 1 ? C_L1 : C_CALM
+lvlName(int k)  => k >= 4 ? "EXTREME" : k == 3 ? "VERY HIGH" : k == 2 ? "HIGH" : k == 1 ? "ELEVATED" : "unauffällig"
+
+// Säulen: Zahl der Bestätigungen. Grau = außerhalb des Gates, also kein Level.
+plot(ok ? nConf : na, "Bestätigungen", style = plot.style_columns,
+     color = not gate ? C_OFF : lvlColor(nConf))
+hline(WARN_LVL, "Warnschwelle", color = color.new(C_L3, 30), linestyle = hline.style_dashed)
+hline(4, "Maximum", color = color.new(#8a8f98, 70), linestyle = hline.style_dotted)
+
+// Leiste am unteren Rand: Gate an. Ohne Säule darüber heißt das Level 0.
+plotshape(ok and gate, "Gate an", style = shape.square, location = location.bottom, color = color.new(C_CALM, 20), size = size.tiny)
+
+// Risikofenster im Kurschart und in der Leiste, darüber die Bänder des Tages
+bgcolor(showWin and riskWin ? color.new(C_L3, 88) : na, title = "Risikofenster im Kurschart", force_overlay = true)
+bgcolor(showWin and riskWin ? color.new(C_L3, 91) : na, title = "Risikofenster in der Leiste")
+bgcolor(showBands and bandWarn ? color.new(bandFour ? C_L4 : C_L3, 68) : showBands and bandTwo ? color.new(C_L2, 74) : na, title = "Bänder im Kurschart", force_overlay = true)
+
+// Level-Marker im Kurschart: Dreieck über dem Balken, Beschriftung darunter
+plotshape(showMarks and mk >= minMark, "Level-Marker", style = shape.triangledown, location = location.abovebar, color = lvlColor(mk), size = size.small, force_overlay = true)
+
+drawMarker(int k, int code, int t, float dist) =>
+    string cmp = compText(code)
+    string tip = str.format_time(t, "dd.MM.yyyy", "America/New_York") + " · Level " + str.tostring(k) + " " + lvlName(k) + " · " + cmp + " · " + pct(dist) + " zum Hoch"
+    label.new(bar_index, low, markComps ? "LEVEL " + str.tostring(k) + " · " + cmp : "LEVEL " + str.tostring(k), yloc = yloc.belowbar, style = label.style_label_up,
+         color = lvlColor(k), textcolor = k >= 3 ? color.white : #1a1a19, size = size.small, tooltip = tip, force_overlay = true)
+
+if showMarks and mk >= minMark
+    drawMarker(mk, useNdq ? cSigN : cSigS, useNdq ? tSigN : tSigS, useNdq ? dSigN : dSigS)
+
+// Alerts für den Index dieses Charts, zum Balkenschluss
+if doAlerts and barstate.isconfirmed
+    string idxName = useNdq ? "NASDAQ" : "S&P 500"
+    if mk >= minMark
+        alert("Correction Risk " + idxName + ": Marker Level " + str.tostring(mk) + " " + lvlName(mk) + " (" + compText(useNdq ? cSigN : cSigS) + "). Schattenmodus, kein Handelssignal.", alert.freq_once_per_bar_close)
+    if warn and not warn[1]
+        alert("Correction Risk " + idxName + ": Warnzustand beginnt, Level " + str.tostring(nConf) + " " + lvlName(nConf) + ". Schattenmodus, kein Handelssignal.", alert.freq_once_per_bar_close)
+
+// Werte für das Datenfenster
+plot(okS ? levelS : na, "Level S&P 500", display = display.data_window)
+plot(okN ? levelN : na, "Level NASDAQ", display = display.data_window)
+plot(okS ? (gateS ? 1 : 0) : na, "Gate S&P 500", display = display.data_window)
+plot(okN ? (gateN ? 1 : 0) : na, "Gate NASDAQ", display = display.data_window)
+plot(distS * 100, "Abstand Hoch S&P 500 %", display = display.data_window, precision = 2)
+plot(distN * 100, "Abstand Hoch NASDAQ %", display = display.data_window, precision = 2)
+plot(okS ? (cOn ? 1 : 0) : na, "C Credit", display = display.data_window)
+plot(okS ? (bOn ? 1 : 0) : na, "B Breadth", display = display.data_window)
+plot(okS ? (rOn ? 1 : 0) : na, "R Rotation", display = display.data_window)
+plot(okS ? (vOn ? 1 : 0) : na, "V Volatility", display = display.data_window)
+plot(mkS, "Erstsignal S&P 500", display = display.data_window)
+plot(mkN, "Erstsignal NASDAQ", display = display.data_window)
+plot(bandWarn ? (bandFour ? 4 : 3) : bandTwo ? 2 : 0, "Band im Kurschart", display = display.data_window)
+plot(winS ? sinceWS : na, "Risikofenster S&P 500, Tag", display = display.data_window)
+plot(winN ? sinceWN : na, "Risikofenster NASDAQ, Tag", display = display.data_window)
+
+// ── Tabelle ──────────────────────────────────────────────────────────────────
+stateText(bool isOk, bool g, int n) =>
+    not isOk ? "keine Daten" : not g ? "kein Level" : str.tostring(n) + " " + lvlName(n)
+
+stateColor(bool isOk, bool g, int n) =>
+    not isOk or not g ? color.new(#8a8f98, 80) : n == 0 ? color.new(C_CALM, 75) : color.new(lvlColor(n), 40)
+
+mark(bool on, string letter) => on ? letter : "·"
+
+// Eingefrorene Quoten 2000–2026 je Level: Rückgang ≥ 5 % binnen 45 Sessions, dahinter die Basis aller Gate-Tage
+rateText(bool isOk, bool g, int n, bool ndq) =>
+    string rateS = n >= 4 ? "38,3" : n == 3 ? "42,2" : n == 2 ? "27,8" : n == 1 ? "24,8" : "18,6"
+    string rateN = n >= 4 ? "53,1" : n == 3 ? "39,5" : n == 2 ? "37,9" : n == 1 ? "35,3" : "29,1"
+    string rate  = ndq ? rateN : rateS
+    not isOk or not g ? "–" : rate + " % / " + (ndq ? "32,5" : "23,1") + " %"
+
+winText(bool isOpen, int since) => isOpen ? "Tag " + str.tostring(since) + " von " + str.tostring(RISK_LEN) : "zu"
+
+markText(int k, int t) => na(k) ? "–" : str.tostring(k) + " am " + str.format_time(t, "dd.MM.yy", "America/New_York")
+
+if showTable and barstate.islast
+    string pos = switch posIn
+        "oben links"   => position.top_left
+        "unten rechts" => position.bottom_right
+        "unten links"  => position.bottom_left
+        =>                position.top_right
+    string sz = switch sizeIn
+        "winzig" => size.tiny
+        "normal" => size.normal
+        =>          size.small
+    color fg  = chart.fg_color
+    color bg  = color.new(chart.bg_color, 10)
+    color dim = color.new(chart.fg_color, 40)
+    var table tbl = table.new(pos, 3, 8, bgcolor = bg, frame_color = color.new(chart.fg_color, 70), frame_width = 1,
+         border_color = color.new(chart.fg_color, 85), border_width = 1, force_overlay = true)
+    table.cell(tbl, 0, 0, "Correction Risk", text_color = fg, text_size = sz, text_halign = text.align_left)
+    table.cell(tbl, 1, 0, "S&P 500", text_color = fg, text_size = sz)
+    table.cell(tbl, 2, 0, "NASDAQ", text_color = fg, text_size = sz)
+    table.cell(tbl, 0, 1, "Level", text_color = dim, text_size = sz, text_halign = text.align_left)
+    table.cell(tbl, 1, 1, stateText(okS, gateS, nConf), text_color = fg, text_size = sz, bgcolor = stateColor(okS, gateS, nConf),
+         tooltip = "Level = Zahl der Bestätigungen an Gate-Tagen: 1 ELEVATED, 2 HIGH, 3 VERY HIGH, 4 EXTREME. Warnzustand ab 3.")
+    table.cell(tbl, 2, 1, stateText(okN, gateN, nConf), text_color = fg, text_size = sz, bgcolor = stateColor(okN, gateN, nConf),
+         tooltip = "Gleiche Bestätigungen, Gate auf QQQ. Schwächer als das S&P-Modell, siehe Kopf des Skripts.")
+    table.cell(tbl, 0, 2, "unter Hoch", text_color = dim, text_size = sz, text_halign = text.align_left,
+         tooltip = "Abstand zum 252-Tage-Schlusshoch. Gate an bis −3 %.")
+    table.cell(tbl, 1, 2, pct(distS), text_color = fg, text_size = sz)
+    table.cell(tbl, 2, 2, pct(distN), text_color = fg, text_size = sz)
+    table.cell(tbl, 0, 3, "Bestätigt", text_color = dim, text_size = sz, text_halign = text.align_left,
+         tooltip = "C Credit (HYG/IEF), B Breadth (RSP), R Rotation (XLY/XLP), V Volatility (VIX)")
+    table.cell(tbl, 1, 3, okS ? mark(cOn, "C") + " " + mark(bOn, "B") + " " + mark(rOn, "R") + " " + mark(vOn, "V") + "   " + str.tostring(nConf) + " von 4" : "keine Daten",
+         text_color = fg, text_size = sz)
+    table.merge_cells(tbl, 1, 3, 2, 3)
+    table.cell(tbl, 0, 4, "Marker", text_color = dim, text_size = sz, text_halign = text.align_left,
+         tooltip = "Jüngstes Erstsignal ab der gewählten Schwelle: Level und Datum.")
+    table.cell(tbl, 1, 4, markText(lastKS, lastTS), text_color = fg, text_size = sz)
+    table.cell(tbl, 2, 4, markText(lastKN, lastTN), text_color = fg, text_size = sz)
+    table.cell(tbl, 0, 5, "Fenster", text_color = dim, text_size = sz, text_halign = text.align_left,
+         tooltip = "Risikofenster: 45 Sessions nach dem letzten Tag im Warnzustand. In diesem Fenster misst der Backtest die Rückgänge. Kein Ausstiegssignal.")
+    table.cell(tbl, 1, 5, winText(winS, sinceWS), text_color = fg, text_size = sz, bgcolor = winS ? color.new(C_L3, 70) : na)
+    table.cell(tbl, 2, 5, winText(winN, sinceWN), text_color = fg, text_size = sz, bgcolor = winN ? color.new(C_L3, 70) : na)
+    table.cell(tbl, 0, 6, "Quote / Basis", text_color = dim, text_size = sz, text_halign = text.align_left,
+         tooltip = "2000–2026: Anteil der Tage mit diesem Level, denen binnen 45 Sessions ein Schluss mindestens 5 % tiefer folgte, und die Basis aller Gate-Tage. Nicht belegt.")
+    table.cell(tbl, 1, 6, rateText(okS, gateS, nConf, false), text_color = fg, text_size = sz)
+    table.cell(tbl, 2, 6, rateText(okN, gateN, nConf, true), text_color = fg, text_size = sz)
+    table.cell(tbl, 0, 7, str.format_time(dayS, "dd.MM.yyyy", "America/New_York") + (barstate.isconfirmed ? "" : " läuft") + " · Schattenmodus, nicht belegt",
+         text_color = dim, text_size = sz, text_halign = text.align_left)
+    table.merge_cells(tbl, 0, 7, 2, 7)
