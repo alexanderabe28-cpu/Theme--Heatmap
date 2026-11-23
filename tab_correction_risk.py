@@ -14,16 +14,25 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+from plotly.subplots import make_subplots
 
 import correction_risk as cr
 
-# Statusfarben (Warnung / ernst), immer mit Textlabel in der Legende
-BAND = {2: ("#ec835a", "2 HIGH"), 3: ("#d03b3b", "3 VERY HIGH"), 4: ("#b04fd0", "4 EXTREME")}
-MARK_COL = {1: "#fab219", 2: "#ec835a", 3: "#d03b3b", 4: "#b04fd0"}
-LINE = "#3987e5"
-MARK_MIN = 2                      # Level-Marker ab diesem Level
+# Darstellung 1:1 aus docs/correction_risk/correction_risk.pine (Version 6.0).
+# Pine-Transparenz t entspricht hier Deckkraft 1 - t/100.
+C_L = {1: "#fab219", 2: "#ec835a", 3: "#d03b3b", 4: "#b04fd0"}   # ELEVATED, HIGH, VERY HIGH, EXTREME
+C_CALM = "#3987e5"                                               # Gate an, Level 0
+C_OFF = "rgba(138,143,152,0.45)"                                 # ausserhalb des Gates (#8a8f98, t 55)
+OP_BAND = {2: 0.26, 3: 0.32, 4: 0.32}                            # Baender: L2 t 74, L3/L4 t 68
+OP_WIN_PRICE, OP_WIN_PANE = 0.12, 0.09                           # Risikofenster: t 88 im Kurs, t 91 in der Leiste
+CANDLE_UP, CANDLE_DN = "#089981", "#f23645"                      # TradingView-Standardkerzen
+MARK_MIN = 2                      # Level-Marker ab diesem Level (Pine-Vorgabe "Marker ab Level" = 2)
 MARK_INK = "#1a1a19"
 RANGES = {"6 Monate": 126, "1 Jahr": 252, "2 Jahre": 504, "5 Jahre": 1260}
+# Zeile "Quote / Basis" der Pine-Tabelle: eingefrorene Quoten 2000–2026 je Level 0..4
+# (Rueckgang >= 5 % binnen 45 Sessions) und die Basis aller Gate-Tage. Nur Anzeige.
+PINE_QUOTE = {"S&P 500": ([18.6, 24.8, 27.8, 42.2, 38.3], 23.1),
+              "NASDAQ": ([29.1, 35.3, 37.9, 39.5, 53.1], 32.5)}
 SAMPLE_ROLE = "1999–2007: blinder Test mit Proxys · 2007–2016: Entwicklung · 2017–2026: Holdout, nicht blind"
 
 
@@ -53,6 +62,122 @@ def _prices() -> pd.DataFrame:
 @st.cache_data(ttl=3600, show_spinner=False)
 def _model(px: pd.DataFrame) -> pd.DataFrame:
     return cr.add_outcomes(cr.compute_levels(px))
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _ohlc() -> pd.DataFrame:
+    """SPY-Kerzen und QQQ-Schluss, bereinigt wie die Modellreihen (Yahoo, auto_adjust).
+
+    Nur fuer Kerzenchart und NASDAQ-Spalte; das Modell rechnet weiter allein mit
+    correction_risk.load_prices.
+    """
+    import yfinance as yf
+
+    raw = yf.download(["SPY", "QQQ"], start="2005-01-01", auto_adjust=True,
+                      progress=False, threads=False, group_by="column")
+    out = pd.DataFrame({"open": raw["Open"]["SPY"], "high": raw["High"]["SPY"],
+                        "low": raw["Low"]["SPY"], "close": raw["Close"]["SPY"],
+                        "qqq": raw["Close"]["QQQ"]})
+    out.index = pd.to_datetime(out.index).tz_localize(None)
+    return out.dropna(subset=["close"])
+
+
+def _nasdaq(df: pd.DataFrame, qqq: pd.Series) -> pd.DataFrame:
+    """NASDAQ-Spalte wie im Pine: dieselben vier Bestaetigungen, Gate auf QQQ
+    (hoechstens 3 % unter dem 252-Tage-Schlusshoch). Parameter aus correction_risk.P."""
+    q = qqq.reindex(df.index)
+    hi = q.rolling(cr.P.gate_lookback).max()
+    gate = (q >= (1 - cr.P.gate_pct) * hi).where(hi.notna())
+    valid = df["valid"] & gate.notna()
+    return pd.DataFrame({"gate": gate, "dist_high": q / hi - 1.0,
+                         "level": (df["n_conf"] * gate.astype(float)).where(valid),
+                         "valid": valid}, index=df.index)
+
+
+def _side(level: pd.Series, gate: pd.Series, dist: pd.Series, valid: pd.Series) -> dict:
+    """Stand eines Index fuer die Pine-Tabelle: Gate, Abstand, juengster Marker, Fenster."""
+    v = valid.fillna(False).astype(bool)
+    if not v.any():
+        return {"ok": False}
+    lvl = level[v]
+    marks = cr.level_markers(lvl)
+    marks = marks[marks >= MARK_MIN]
+    since = cr.sessions_since_warn(lvl).iloc[-1]
+    return {"ok": True, "gate": bool(gate[v].iloc[-1]), "dist": float(dist[v].iloc[-1]),
+            "mark": (marks.index[-1], int(marks.iloc[-1])) if len(marks) else None,
+            "win": int(since) if pd.notna(since) and since <= cr.P.horizon else None}
+
+
+def _pine_pct(x: float) -> str:
+    """Wie pct() im Pine: Minuszeichen, eine Nachkommastelle, Komma."""
+    if x is None or np.isnan(x):
+        return "–"
+    return ("−" if x < -0.0005 else "") + f"{abs(x) * 100:.1f} %".replace(".", ",")
+
+
+def _rgba(hex_col: str, alpha: float) -> str:
+    h = hex_col.lstrip("#")
+    return f"rgba({int(h[0:2], 16)},{int(h[2:4], 16)},{int(h[4:6], 16)},{alpha})"
+
+
+def _pine_table(s: dict, sides: dict, datum: pd.Timestamp) -> str:
+    """Tabelle "Correction Risk" wie oben rechts im Pine-Indikator, als HTML."""
+    n = s["n_conf"]
+    fg, dim, line = "#e8ecf2", "#9fb0e8", "rgba(232,236,242,0.15)"
+    cell = f"padding:4px 8px;border:1px solid {line};font-size:12.5px;white-space:nowrap"
+
+    def state(sd):
+        if not sd["ok"]:
+            return "keine Daten", _rgba("#8a8f98", 0.2)
+        if not sd["gate"]:
+            return "kein Level", _rgba("#8a8f98", 0.2)
+        return f"{n} {cr.LEVEL_NAMES[n]}", _rgba(C_CALM, 0.25) if n == 0 else _rgba(C_L[n], 0.6)
+
+    def rate(name, sd):
+        if not sd["ok"] or not sd["gate"]:
+            return "–"
+        q, b = PINE_QUOTE[name]
+        return f"{q[min(n, 4)]:.1f} % / {b:.1f} %".replace(".", ",")
+
+    def mark(sd):
+        m = sd.get("mark")
+        return "–" if not m else f"{m[1]} am {m[0]:%d.%m.%y}"
+
+    def win(sd):
+        return ("zu", "") if sd.get("win") is None else (f"Tag {sd['win']} von {cr.P.horizon}",
+                                                       f"background:{_rgba(C_L[3], 0.3)};")
+
+    names = list(sides)
+    letters = " ".join(c if s["komponenten"][c] else "·" for c in cr.COMPONENTS)
+    rows = [("Level", [state(sides[k]) for k in names],
+             "Level = Zahl der Bestätigungen an Gate-Tagen: 1 ELEVATED, 2 HIGH, 3 VERY HIGH, 4 EXTREME. Warnzustand ab 3."),
+            ("unter Hoch", [(_pine_pct(sides[k].get("dist", np.nan)), "") for k in names],
+             "Abstand zum 252-Tage-Schlusshoch. Gate an bis −3 %."),
+            ("Bestätigt", None, "C Credit (HYG/IEF), B Breadth (RSP), R Rotation (XLY/XLP), V Volatility (VIX)"),
+            ("Marker", [(mark(sides[k]), "") for k in names],
+             "Jüngstes Erstsignal ab Level 2: Level und Datum."),
+            ("Fenster", [win(sides[k]) for k in names],
+             "Risikofenster: 45 Sessions nach dem letzten Tag im Warnzustand. Kein Ausstiegssignal."),
+            ("Quote / Basis", [(rate(k, sides[k]), "") for k in names],
+             "2000–2026: Anteil der Tage mit diesem Level, denen binnen 45 Sessions ein Schluss "
+             "mindestens 5 % tiefer folgte, und die Basis aller Gate-Tage. Nicht belegt.")]
+    html = [f"<table style='border-collapse:collapse;color:{fg};margin-left:auto;"
+            f"background:rgba(16,24,47,0.9)'>",
+            f"<tr><td style='{cell}'>Correction Risk</td>"
+            + "".join(f"<td style='{cell};text-align:center'>{k}</td>" for k in names) + "</tr>"]
+    for label, vals, tip in rows:
+        html.append(f"<tr><td style='{cell};color:{dim}' title='{tip}'>{label}</td>")
+        if vals is None:
+            html.append(f"<td colspan='{len(names)}' style='{cell};text-align:center'>"
+                        f"{letters}&nbsp;&nbsp;&nbsp;{n} von 4</td>")
+        else:
+            for text, bg in vals:
+                style = f"background:{bg};" if bg and not bg.startswith("background") else bg
+                html.append(f"<td style='{cell};text-align:center;{style}'>{text}</td>")
+        html.append("</tr>")
+    html.append(f"<tr><td colspan='{len(names) + 1}' style='{cell};color:{dim}'>"
+                f"{datum:%d.%m.%Y} · Schattenmodus, nicht belegt</td></tr></table>")
+    return "".join(html)
 
 
 @st.cache_data(ttl=86400, show_spinner="Rechne Erstsignal-Test …")
@@ -136,56 +261,106 @@ def _first_signal_table(stats: dict) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def _chart(df: pd.DataFrame, n: int) -> go.Figure:
-    d = df[df["valid"]].tail(n)
-    fig = go.Figure()
+def _chart(df: pd.DataFrame, ohlc: pd.DataFrame | None, n: int) -> go.Figure:
+    """Kurschart und Leiste wie der Pine-Indikator auf einem SPY-Tageschart.
+
+    Oben Kerzen mit Risikofenster, Baendern (Level 2-4 an Gate-Tagen) und Level-Markern
+    (Dreieck ueber dem Balken, darunter "LEVEL n · Bestaetigungen"). Unten die Saeulen
+    der Bestaetigungen, grau ausserhalb des Gates, mit Warnschwelle 3 und Gate-Leiste.
+    """
+    valid = df[df["valid"]]
+    d = valid.tail(n)
+    k = ohlc.reindex(d.index) if ohlc is not None else None
+    candles = k is not None and k[["open", "high", "low", "close"]].notna().all(axis=1).mean() > 0.95
+    hi_s = k["high"].fillna(d["spy"]) if candles else d["spy"]
+    lo_s = k["low"].fillna(d["spy"]) if candles else d["spy"]
+
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.74, 0.26],
+                        vertical_spacing=0.03)
+    half = pd.Timedelta(hours=12)              # Baender von Balkenmitte zu Balkenmitte
+
+    def band(start, end, color, opacity, yref):
+        return dict(type="rect", xref="x", yref=yref, x0=start - half, x1=end - half, y0=0, y1=1,
+                    fillcolor=color, opacity=opacity, line_width=0, layer="below")
+
+    # Risikofenster (auf der ganzen Historie gerechnet), darueber die Baender des Tages
+    since = cr.sessions_since_warn(valid["level"]).reindex(d.index)
     shapes = []
-    # Risikofenster: bis P.horizon Sessions nach dem letzten Tag im Warnzustand, auf der ganzen Historie gerechnet
-    since = cr.sessions_since_warn(df[df["valid"]]["level"]).reindex(d.index)
     for start, end, _ in _spans((since <= cr.P.horizon).astype(int) * 3):
-        shapes.append(dict(type="rect", xref="x", yref="paper", x0=start, x1=end, y0=0, y1=1,
-                           fillcolor=BAND[3][0], opacity=0.13, line_width=0, layer="below"))
+        shapes += [band(start, end, C_L[3], OP_WIN_PRICE, "y domain"),
+                   band(start, end, C_L[3], OP_WIN_PANE, "y2 domain")]
     for start, end, lvl in _spans(d["level"]):
-        shapes.append(dict(type="rect", xref="x", yref="paper", x0=start, x1=end, y0=0, y1=1,
-                           fillcolor=BAND[lvl][0], opacity=0.30, line_width=0, layer="below"))
+        shapes.append(band(start, end, C_L[lvl], OP_BAND[lvl], "y domain"))
     fig.update_layout(shapes=shapes)
-    comps = d[list(cr.COMPONENTS)].apply(lambda r: "".join(c for c in cr.COMPONENTS if r[c] == True) or "–", axis=1)  # noqa: E712
-    custom = np.stack([d["level"].astype(int), comps, d["dist_high"] * 100,
-                       np.where(d["gate"] == True, "an", "aus")], axis=-1)  # noqa: E712
-    fig.add_trace(go.Scatter(
-        x=d.index, y=d["spy"], mode="lines", name="SPY",
-        line=dict(color=LINE, width=2), customdata=custom, showlegend=False,
-        hovertemplate="SPY %{y:.2f}<br>Level %{customdata[0]} [%{customdata[1]}]"
-                      "<br>Gate %{customdata[3]}, %{customdata[2]:.1f} % zum Hoch<extra></extra>"))
-    for lvl, (col, label) in BAND.items():   # Legendeneintraege fuer die Baender
-        fig.add_trace(go.Scatter(x=[None], y=[None], mode="markers", name=label,
-                                 marker=dict(symbol="square", size=11, color=col, opacity=0.6)))
-    fig.add_trace(go.Scatter(x=[None], y=[None], mode="markers", name=f"Risikofenster ({cr.P.horizon} Sessions)",
-                             marker=dict(symbol="square", size=11, color=BAND[3][0], opacity=0.25)))
+
+    comps = d[list(cr.COMPONENTS)].apply(
+        lambda r: "".join(c for c in cr.COMPONENTS if r[c] == True) or "–", axis=1)  # noqa: E712
+    info = [f"Level {int(l)} {cr.LEVEL_NAMES[int(l)] if g else '(Gate aus)'} · {c} · "
+            f"{_pine_pct(x)} zum Hoch" for l, g, c, x in
+            zip(d["level"], d["gate"] == True, comps, d["dist_high"])]  # noqa: E712
+    if candles:
+        fig.add_trace(go.Candlestick(
+            x=d.index, open=k["open"], high=k["high"], low=k["low"], close=k["close"], name="SPY",
+            increasing=dict(line=dict(color=CANDLE_UP), fillcolor=CANDLE_UP),
+            decreasing=dict(line=dict(color=CANDLE_DN), fillcolor=CANDLE_DN),
+            text=info, hoverinfo="x+y+text", showlegend=False), row=1, col=1)
+    else:                                      # ohne OHLC (Yahoo nicht erreichbar): Schlusskurs als Linie
+        fig.add_trace(go.Scatter(x=d.index, y=d["spy"], mode="lines", name="SPY", text=info,
+                                 line=dict(color=C_CALM, width=1.6), showlegend=False), row=1, col=1)
+
     # Level-Marker: erster Tag, an dem das Level hoeher ist als an den 20 Sessions davor.
     # Auf der ganzen Historie gerechnet, damit die 20 Sessions vor dem Fenster zaehlen.
-    marks = cr.level_markers(df[df["valid"]]["level"])
+    marks = cr.level_markers(valid["level"])
     marks = marks[(marks >= MARK_MIN) & (marks.index >= d.index[0])]
-    pos = {t: i for i, t in enumerate(d.index)}
-    prev, lift = -99, 0
-    for t, k in marks.items():
-        lift = lift + 26 if pos[t] - prev < 8 else 0          # nahe Marker stapeln statt ueberdecken
-        prev = pos[t]
-        fig.add_annotation(
-            x=t, y=d.at[t, "spy"], text=f"<b>{k}</b>", showarrow=True, arrowhead=0, arrowwidth=1.4,
-            arrowcolor=MARK_COL[k], ax=0, ay=-(26 + lift), bgcolor=MARK_COL[k], borderpad=3,
-            font=dict(color="#ffffff" if k >= 3 else MARK_INK, size=12),
-            hovertext=f"{t:%d.%m.%Y} · Level {k} {cr.LEVEL_NAMES[k]} [{comps.at[t]}] · {_pct(d.at[t, 'dist_high'])} zum Hoch")
-    fig.add_trace(go.Scatter(x=[None], y=[None], mode="markers", name="Zahl im Kästchen: Level-Marker",
-                             marker=dict(symbol="square", size=12, color=BAND[3][0], line=dict(width=1.5, color=MARK_INK))))
-    lo, hi = float(d["spy"].min()), float(d["spy"].max())
-    span = max(hi - lo, 1e-9)
+    span = max(float(hi_s.max() - lo_s.min()), 1e-9)
+    if len(marks):
+        tips = [f"{t:%d.%m.%Y} · Level {m} {cr.LEVEL_NAMES[m]} · {comps.at[t]} · "
+                f"{_pine_pct(d.at[t, 'dist_high'])} zum Hoch" for t, m in marks.items()]
+        fig.add_trace(go.Scatter(
+            x=marks.index, y=[hi_s.at[t] + 0.025 * span for t in marks.index], mode="markers",
+            marker=dict(symbol="triangle-down", size=13, color=[C_L[m] for m in marks]),
+            text=tips, hoverinfo="text", name="Level-Marker", showlegend=False), row=1, col=1)
+        # Liegen Marker nur wenige Sessions auseinander, Beschriftungen untereinander stapeln
+        pos, stack, prev = {t: d.index.get_loc(t) for t in marks.index}, 0, None
+        gap = max(3, n // 40)
+        for t, m in marks.items():
+            if prev is not None and pos[t] - prev <= gap:
+                stack, base = stack + 1, min(base, lo_s.at[t])
+            else:
+                stack, base = 0, lo_s.at[t]
+            prev = pos[t]
+            fig.add_annotation(
+                x=t, y=base, xref="x", yref="y", yanchor="top", yshift=-8 - 20 * stack,
+                showarrow=False,
+                text=f"LEVEL {m} · {comps.at[t]}", bgcolor=C_L[m], borderpad=3,
+                font=dict(color="#ffffff" if m >= 3 else MARK_INK, size=10),
+                hovertext=f"{t:%d.%m.%Y} · Level {m} {cr.LEVEL_NAMES[m]} · {comps.at[t]} · "
+                          f"{_pine_pct(d.at[t, 'dist_high'])} zum Hoch")
+
+    # Leiste: Saeulen = Zahl der Bestaetigungen; Farbe nach Level, grau ausserhalb des Gates
+    nconf = d["n_conf"].astype(int)
+    gate_on = (d["gate"] == True)  # noqa: E712
+    cols = [C_L.get(v, C_CALM) if g else C_OFF for v, g in zip(nconf, gate_on)]
+    fig.add_trace(go.Bar(x=d.index, y=nconf, marker_color=cols, marker_line_width=0,
+                         name="Bestätigungen", showlegend=False,
+                         hovertemplate="Bestätigungen %{y}<extra></extra>"), row=2, col=1)
+    fig.add_trace(go.Scatter(x=d.index[gate_on], y=[-0.4] * int(gate_on.sum()), mode="markers",
+                             marker=dict(symbol="square", size=4, color=_rgba(C_CALM, 0.8)),
+                             name="Gate an", hoverinfo="skip", showlegend=False), row=2, col=1)
+    fig.add_hline(y=cr.WARN_LEVEL, line=dict(color=_rgba(C_L[3], 0.7), dash="dash", width=1), row=2, col=1)
+    fig.add_hline(y=4, line=dict(color=_rgba("#8a8f98", 0.3), dash="dot", width=1), row=2, col=1)
+
+    # Handelstage lueckenlos wie in TradingView: Wochenenden und Feiertage ausblenden
+    holidays = pd.bdate_range(d.index[0], d.index[-1]).difference(d.index)
+    fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"]), dict(values=list(holidays))],
+                     showgrid=False, hoverformat="%d.%m.%Y", tickformat="%m.%y")
     fig.update_layout(
-        height=420, margin=dict(l=8, r=8, t=8, b=8), hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.01, x=0),
-        xaxis=dict(showgrid=False, hoverformat="%d.%m.%Y", tickformat="%m.%y"),
+        height=640, margin=dict(l=8, r=8, t=8, b=8), hovermode="x unified", bargap=0.15,
+        xaxis_rangeslider_visible=False, showlegend=False,
         yaxis=dict(title=None, tickformat=".0f", gridcolor="rgba(128,128,128,0.18)",
-                   range=[lo - 0.04 * span, hi + 0.16 * span]),   # Luft nach oben fuer die Marker
+                   range=[float(lo_s.min()) - 0.10 * span, float(hi_s.max()) + 0.07 * span]),
+        yaxis2=dict(title=None, range=[-0.7, 4.4], tickvals=[0, 1, 2, 3, 4],
+                    gridcolor="rgba(128,128,128,0.12)"),
     )
     return fig
 
@@ -203,36 +378,45 @@ def render_correction_risk_tab(px: pd.DataFrame | None = None) -> None:
         return
     df = _model(px)
     s = cr.current_state(df)
+    try:
+        ohlc = _ohlc()
+    except Exception:                             # Kerzen und NASDAQ sind Zusatz, das Modell laeuft ohne
+        ohlc = None
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Zustand", _state_name(s["level"], s["gate"]))
-    c2.metric("Bestätigungen", f"{s['n_conf']} von 4")
-    c3.metric("Gate (≤ 3 % unter Hoch)", "an" if s["gate"] else "aus")
-    c4.metric("Abstand 252-Tage-Hoch", _pct(s["dist_high"]))
-    since_now = cr.sessions_since_warn(df[df["valid"]]["level"]).iloc[-1]
-    fenster = f"Tag {int(since_now)} von {cr.P.horizon}" if since_now <= cr.P.horizon else "zu"
-    st.caption(f"Stand: Schluss {s['datum']:%d.%m.%Y} · Risikofenster: {fenster}")
+    # Tabelle wie im Pine-Indikator (oben rechts): S&P 500 und NASDAQ nebeneinander
+    sides = {"S&P 500": _side(df["level"], df["gate"], df["dist_high"], df["valid"])}
+    if ohlc is not None and ohlc["qqq"].notna().any():
+        nq = _nasdaq(df, ohlc["qqq"])
+        sides["NASDAQ"] = _side(nq["level"], nq["gate"], nq["dist_high"], nq["valid"])
+    else:
+        sides["NASDAQ"] = {"ok": False}
 
-    if not s["gate"]:
-        st.info(f"Außerhalb Gate: SPY liegt {_pct(abs(s['dist_high']))} unter dem 252-Tage-Hoch. "
-                "Das Modell bewertet nur Tops nahe Hoch und gibt hier kein Level aus.")
-    st.warning(
-        "Schattenmodus, nicht belegt. Im Warnzustand folgte "
-        f"{by_key['E']['label']} an {_pct(by_key['E']['ab3']['quote'], 0)} und {by_key['H1']['label']} an "
-        f"{_pct(by_key['H1']['ab3']['quote'], 0)} der Tage ein Rückgang ≥ 5 %, im blinden Test {by_key['H2']['label']} "
-        f"nur an {_pct(by_key['H2']['ab3']['quote'], 0)} bei {_pct(by_key['H2']['basis'], 0)} Basisrate. "
-        "Anzeige als Marktkontext, keine Handlungsautorität.")
-
-    cols = st.columns(4)
-    for col, (key, name) in zip(cols, cr.COMPONENTS.items()):
-        col.metric(name, "Risk-off" if s["komponenten"][key] else "neutral")
+    left, right = st.columns([3, 2])
+    with left:
+        st.caption(f"Stand: Schluss {s['datum']:%d.%m.%Y}")
+        if not s["gate"]:
+            st.info(f"Außerhalb Gate: SPY liegt {_pct(abs(s['dist_high']))} unter dem 252-Tage-Hoch. "
+                    "Das Modell bewertet nur Tops nahe Hoch und gibt hier kein Level aus.")
+        st.warning(
+            "Schattenmodus, nicht belegt. Im Warnzustand folgte "
+            f"{by_key['E']['label']} an {_pct(by_key['E']['ab3']['quote'], 0)} und {by_key['H1']['label']} an "
+            f"{_pct(by_key['H1']['ab3']['quote'], 0)} der Tage ein Rückgang ≥ 5 %, im blinden Test {by_key['H2']['label']} "
+            f"nur an {_pct(by_key['H2']['ab3']['quote'], 0)} bei {_pct(by_key['H2']['basis'], 0)} Basisrate. "
+            "Anzeige als Marktkontext, keine Handlungsautorität.")
+    with right:
+        st.markdown(_pine_table(s, sides, s["datum"]), unsafe_allow_html=True)
 
     rng = st.radio("Zeitraum", list(RANGES), index=1, horizontal=True, key="cr_range")
-    _stretch(st.plotly_chart, _chart(df, RANGES[rng]), key="cr_chart")
-    st.caption(f"Level-Marker ab Level {MARK_MIN}: erster Tag, an dem das Level höher ist als an den "
-               f"{cr.P.episode_gap} Sessions davor. Als Einzelsignal nicht belegt, siehe Erstsignal-Test. "
-               f"Blasses Band: Risikofenster, {cr.P.horizon} Sessions nach dem letzten Tag im Warnzustand. "
-               "Es ist das Messfenster des Backtests und kein Ausstiegssignal.")
+    _stretch(st.plotly_chart, _chart(df, ohlc, RANGES[rng]), key="cr_chart")
+    st.caption(
+        "Darstellung wie der TradingView-Indikator auf SPY, Tageschart. Säulen unten: Zahl der "
+        "Bestätigungen, grau außerhalb des Gates, blaue Leiste = Gate an, gestrichelt die "
+        f"Warnschwelle {cr.WARN_LEVEL}. Bänder im Kurs: orange 2 HIGH, rot 3 VERY HIGH, violett "
+        f"4 EXTREME, nur an Gate-Tagen. Blasses Rot: Risikofenster, {cr.P.horizon} Sessions nach dem "
+        "letzten Tag im Warnzustand, Messfenster des Backtests und kein Ausstiegssignal. "
+        f"Marker ab Level {MARK_MIN}: erster Tag, an dem das Level höher ist als an den "
+        f"{cr.P.episode_gap} Sessions davor, als Einzelsignal nicht belegt. Die Kerzen sind wie das "
+        "Modell dividendenbereinigt und liegen deshalb leicht unter den TradingView-Kursen.")
 
     st.markdown("**Volltest: Level als Zustand** · Anteil der Tage, denen binnen 45 Sessions ein Schluss "
                 "≥ 5 % unter dem Tagesschluss folgte (in Klammern: Zahl der Tage)")
