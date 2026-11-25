@@ -9,47 +9,128 @@ EDOW,Marktbreite (EW),First Trust Dow 30 Equal Weight ETF
 SMH,Halbleiter,VanEck Semiconductor ETF
 SOXX,Halbleiter,iShares Semiconductor ETF
 XSD,Halbleiter,SPDR S&P Semiconductor ETF
+DRAM,Halbleiter,Roundhill Memory ETF
+EUV,Halbleiter,Corgi Lithography & Semiconductor Photonics ETF
+FOTO,Halbleiter,Tuttle Capital Pure Play Photonics ETF
 IGV,Software Infra & Application,iShares Expanded Tech-Software ETF
 SKYY,Software Infra & Application,First Trust Cloud Computing ETF
 CIBR,Software Infra & Application,First Trust NASDAQ Cybersecurity ETF
 AIQ,Software Infra & Application,Global X Artificial Intelligence & Technology ETF
+CLOU,Software Infra & Application,Global X Cloud Computing ETF
+HACK,Software Infra & Application,Amplify Cybersecurity ETF
+XSW,Software Infra & Application,SPDR S&P Software & Services ETF
 XBI,Biotech/Health,SPDR S&P Biotech ETF
 IBB,Biotech/Health,iShares Biotechnology ETF
 XHS,Biotech/Health,SPDR S&P Health Care Services ETF
+ARKG,Biotech/Health,ARK Genomic Revolution ETF
+BBH,Biotech/Health,VanEck Biotech ETF
+IDNA,Biotech/Health,iShares Genomics Immunology and Healthcare ETF
+IHI,Biotech/Health,iShares U.S. Medical Devices ETF
+PPH,Biotech/Health,VanEck Pharmaceutical ETF
 KRE,Financials,SPDR S&P Regional Banking ETF
 XLF,Financials,Financial Select Sector SPDR ETF
 KIE,Financials,SPDR S&P Insurance ETF
 KBWP,Financials,Invesco KBW Property & Casualty Insurance ETF
 PSP,Financials,Invesco Global Listed Private Equity ETF
+KBE,Financials,SPDR S&P Bank ETF
 XLI,Industrie/Transport,Industrial Select Sector SPDR ETF
 IYT,Industrie/Transport,iShares U.S. Transportation ETF
 SEA,Industrie/Transport,U.S. Global Sea to Sky Cargo ETF
 PPA,Industrie/Transport,Invesco Aerospace & Defense ETF
+ITA,Industrie/Transport,iShares U.S. Aerospace & Defense ETF
+JETS,Industrie/Transport,U.S. Global Jets ETF
+PAVE,Industrie/Transport,Global X U.S. Infrastructure Development ETF
+UFO,Industrie/Transport,Procure Space ETF
+XAR,Industrie/Transport,SPDR S&P Aerospace & Defense ETF
 XLU,Utilities,Utilities Select Sector SPDR ETF
 VPU,Utilities,Vanguard Utilities ETF
 UTES,Utilities,Virtus Reaves Utilities ETF
 GRID,Utilities,First Trust Smart Grid ETF
 FIW,Utilities,First Trust Water ETF
+PHO,Utilities,Invesco Water Resources ETF
 XLE,Energie,Energy Select Sector SPDR ETF
 XOP,Energie,SPDR S&P Oil & Gas Exploration & Production ETF
 PXJ,Energie,Invesco Oil & Gas Services ETF
+IXC,Energie,iShares Global Energy ETF
+NANR,Energie,SPDR S&P North American Natural Resources ETF
+OIH,Energie,VanEck Oil Services ETF
 GLD,Metalle,SPDR Gold Shares
 SLV,Metalle,iShares Silver Trust
 SCOP,Metalle,Sprott Physical Copper Trust
+OUNZ,Metalle,VanEck Merk Gold ETF
+SPPP,Metalle,Sprott Physical Platinum and Palladium Trust
 VAW,Chems & Miners,Vanguard Materials ETF
 COPX,Chems & Miners,Global X Copper Miners ETF
 GDX,Chems & Miners,VanEck Gold Miners ETF
 SIL,Chems & Miners,Global X Silver Miners ETF
+GDXJ,Chems & Miners,VanEck Junior Gold Miners ETF
+LIT,Chems & Miners,Global X Lithium & Battery Tech ETF
+REMX,Chems & Miners,VanEck Rare Earth/Strategic Metals ETF
+XME,Chems & Miners,SPDR S&P Metals & Mining ETF
 XHB,Consumer,SPDR S&P Homebuilders ETF
 XRT,Consumer,SPDR S&P Retail ETF
 PEJ,Consumer,Invesco Leisure and Entertainment ETF
+ITB,Consumer,iShares U.S. Home Construction ETF
 RWX,Real Estate,SPDR Dow Jones International Real Estate ETF
 PNQI,Internet/Social,Invesco NASDAQ Internet ETF
 SOCL,Internet/Social,Global X Social Media ETF
+ESPO,Internet/Social,VanEck Video Gaming and eSports ETF
+FDN,Internet/Social,First Trust Dow Jones Internet Index Fund
+IBUY,Internet/Social,Amplify Online Retail ETF
 IBOT,Robotik/Connect,VanEck Robotics ETF
 NXTG,Robotik/Connect,First Trust IndXX NextG ETF
 KNCT,Robotik/Connect,Invesco Next Gen Connectivity ETF
+BOTZ,Robotik/Connect,Global X Robotics & Artificial Intelligence ETF
 GENZ,Consumer-Trends,VanEck Digital Native Economy ETF
+MSOS,Consumer-Trends,AdvisorShares Pure US Cannabis ETF
 CARZ,Auto/Mobility,First Trust Future Vehicles & Technology ETF
+DRIV,Auto/Mobility,Global X Autonomous & Electric Vehicles ETF
+IDRV,Auto/Mobility,iShares Self-Driving EV and Tech ETF
 NUKZ,Nuklear/Uran,Range Nuclear Renaissance ETF
 URA,Nuklear/Uran,Global X Uranium ETF
+NLR,Nuklear/Uran,VanEck Uranium Nuclear Energy ETF
+XLB,Sektoren (SPDR),Materials Select Sector SPDR ETF
+XLC,Sektoren (SPDR),Communication Services Select Sector SPDR ETF
+XLK,Sektoren (SPDR),Technology Select Sector SPDR ETF
+XLP,Sektoren (SPDR),Consumer Staples Select Sector SPDR ETF
+XLRE,Sektoren (SPDR),Real Estate Select Sector SPDR ETF
+XLV,Sektoren (SPDR),Health Care Select Sector SPDR ETF
+XLY,Sektoren (SPDR),Consumer Discretionary Select Sector SPDR ETF
+IVE,Value/Growth,iShares S&P 500 Value ETF
+IVW,Value/Growth,iShares S&P 500 Growth ETF
+IJJ,Value/Growth,iShares S&P Mid-Cap 400 Value ETF
+IJK,Value/Growth,iShares S&P Mid-Cap 400 Growth ETF
+IJS,Value/Growth,iShares S&P Small-Cap 600 Value ETF
+IJT,Value/Growth,iShares S&P Small-Cap 600 Growth ETF
+IWO,Value/Growth,iShares Russell 2000 Growth ETF
+AGG,Anleihen/Dollar,iShares Core U.S. Aggregate Bond ETF
+EMLC,Anleihen/Dollar,VanEck J.P. Morgan EM Local Currency Bond ETF
+HYG,Anleihen/Dollar,iShares iBoxx USD High Yield Corporate Bond ETF
+IEF,Anleihen/Dollar,iShares 7-10 Year Treasury Bond ETF
+IEI,Anleihen/Dollar,iShares 3-7 Year Treasury Bond ETF
+LQD,Anleihen/Dollar,iShares iBoxx USD Investment Grade Corporate Bond ETF
+SHV,Anleihen/Dollar,iShares 0-1 Year Treasury Bond ETF
+TLT,Anleihen/Dollar,iShares 20+ Year Treasury Bond ETF
+UUP,Anleihen/Dollar,Invesco DB US Dollar Index Bullish Fund
+VGIT,Anleihen/Dollar,Vanguard Intermediate-Term Treasury ETF
+AIA,International/China,iShares Asia 50 ETF
+ASHR,International/China,Xtrackers Harvest CSI 300 China A-Shares ETF
+FXI,International/China,iShares China Large-Cap ETF
+KWEB,International/China,KraneShares CSI China Internet ETF
+ARKK,Innovation/Momentum,ARK Innovation ETF
+BOUT,Innovation/Momentum,Innovator IBD Breakout Opportunities ETF
+BUZZ,Innovation/Momentum,VanEck Social Sentiment ETF
+FFTY,Innovation/Momentum,Innovator IBD 50 ETF
+IPO,Innovation/Momentum,Renaissance IPO ETF
+MAGS,Innovation/Momentum,Roundhill Magnificent Seven ETF
+QTUM,Innovation/Momentum,Defiance Quantum ETF
+BLOK,Krypto/Blockchain,Amplify Blockchain Technology ETF
+WGMI,Krypto/Blockchain,CoinShares Bitcoin Mining ETF
+DBA,Rohstoffe/Agrar,Invesco DB Agriculture Fund
+DBC,Rohstoffe/Agrar,Invesco DB Commodity Index Tracking Fund
+MOO,Rohstoffe/Agrar,VanEck Agribusiness ETF
+UNG,Rohstoffe/Agrar,United States Natural Gas Fund
+USO,Rohstoffe/Agrar,United States Oil Fund
+WEAT,Rohstoffe/Agrar,Teucrium Wheat Fund
+PBW,Clean Energy,Invesco WilderHill Clean Energy ETF
+TAN,Clean Energy,Invesco Solar ETF

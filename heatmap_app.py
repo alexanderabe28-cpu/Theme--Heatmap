@@ -278,7 +278,59 @@ def fetch_ohlc(ticker: str, period: str = "1y") -> pd.DataFrame:
     return df.dropna(how="all")
 
 
-def render_detail_chart(ticker: str, label: str) -> None:
+# Yahoo-Symbole, die in TradingView anders heissen (Futures, Indizes, FX)
+TV_SYMBOL = {
+    "ES=F": "CME_MINI:ES1!", "NQ=F": "CME_MINI:NQ1!", "RTY=F": "CME_MINI:RTY1!",
+    "YM=F": "CBOT_MINI:YM1!", "GC=F": "COMEX:GC1!", "SI=F": "COMEX:SI1!",
+    "HG=F": "COMEX:HG1!", "CL=F": "NYMEX:CL1!", "BZ=F": "NYMEX:BB1!",
+    "HO=F": "NYMEX:HO1!", "RB=F": "NYMEX:RB1!", "ZN=F": "CBOT:ZN1!",
+    "ZB=F": "CBOT:ZB1!", "NG=F": "NYMEX:NG1!", "DX-Y.NYB": "TVC:DXY",
+    "JPY=X": "FX:USDJPY", "EURUSD=X": "FX:EURUSD", "^VIX": "CBOE:VIX",
+    "^VIX3M": "CBOE:VIX3M", "^GSPC": "SP:SPX", "^NDX": "NASDAQ:NDX",
+    "^TNX": "TVC:TNX", "BTC-USD": "BITSTAMP:BTCUSD", "ETH-USD": "BITSTAMP:ETHUSD",
+}
+
+
+def tv_url(ticker: str) -> str | None:
+    """TradingView-Chart-Link zu einem Yahoo-Symbol (None, wenn unbekannt)."""
+    sym = TV_SYMBOL.get(ticker)
+    if sym is None:
+        if any(ch in ticker for ch in "=^"):
+            return None
+        sym = ticker.replace("-", ".")          # BRK-B -> BRK.B
+    return f"https://www.tradingview.com/chart/?symbol={sym}"
+
+
+def picked_row(event) -> int | None:
+    """Zeilennummer aus einer st.dataframe-Auswahl (Zeile oder Zelle)."""
+    try:
+        sel = event["selection"]
+    except (TypeError, KeyError):
+        return None
+    rows = sel.get("rows") or []
+    if rows:
+        return int(rows[0])
+    cells = sel.get("cells") or []
+    if cells:
+        c = cells[0]
+        return int(c[0] if isinstance(c, (list, tuple)) else c["row"])
+    return None
+
+
+def ticker_table(data, tbl: pd.DataFrame, key: str, name_col: str | None = None,
+                 tick_col: str = "Ticker", **kw) -> None:
+    """st.dataframe, bei dem ein Klick auf Zeile oder Ticker den Detail-Chart oeffnet."""
+    ev = st.dataframe(data, key=key, on_select="rerun",
+                      selection_mode=["single-row", "single-cell"], **kw)
+    i = picked_row(ev)
+    if i is None or i >= len(tbl):
+        return
+    r = tbl.iloc[i]
+    tick = str(r[tick_col])
+    render_detail_chart(tick, str(r[name_col]) if name_col else tick, key=key)
+
+
+def render_detail_chart(ticker: str, label: str, key: str = "") -> None:
     """Candlestick + EMA21/50 + Volumen unter der Heatmap."""
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
@@ -313,15 +365,15 @@ def render_detail_chart(ticker: str, label: str) -> None:
 
     fig.update_layout(
         title=dict(text=f"{label} · {ticker} · 1 Jahr",
-                   font=dict(size=15, color="#fff")),
-        height=460, margin=dict(t=45, l=0, r=0, b=0),
+                   font=dict(size=15, color="#fff"), y=0.985, yanchor="top"),
+        height=490, margin=dict(t=75, l=0, r=0, b=0),
         paper_bgcolor=NAVY_BG, plot_bgcolor=NAVY_BG, font=dict(color="#fff"),
         xaxis_rangeslider_visible=False, bargap=0.1,
-        legend=dict(orientation="h", y=1.10, x=1, xanchor="right"),
+        legend=dict(orientation="h", y=1.01, x=0, xanchor="left", yanchor="bottom"),
     )
     fig.update_xaxes(gridcolor="#243063", rangebreaks=[dict(bounds=["sat", "mon"])])
     fig.update_yaxes(gridcolor="#243063")
-    st.plotly_chart(fig, use_container_width=True, key=f"detail_{ticker}")
+    st.plotly_chart(fig, use_container_width=True, key=f"detail_{key}_{ticker}")
 
     last = float(d["Close"].iloc[-1])
     st.caption(
@@ -330,6 +382,10 @@ def render_detail_chart(ticker: str, label: str) -> None:
         f"EMA50 {ema50.iloc[-1]:,.2f} "
         f"({'darueber' if last >= ema50.iloc[-1] else 'darunter'})"
     )
+    url = tv_url(ticker)
+    if url:
+        st.link_button(f"{ticker} in TradingView öffnen ↗", url,
+                       key=f"tv_{key}_{ticker}")
 
 
 @st.cache_data(ttl=QUOTE_TTL, show_spinner=False)
@@ -1101,7 +1157,7 @@ def render_industry_block(ind_rs: pd.DataFrame, snap: pd.DataFrame,
         "zum 52W-Hoch %": col("FromHigh%"), "Ind-RS": col("IndRS"),
     })
     pct_cols = ["Tag %", "Woche %", "Monat %", "Quartal %"]
-    st.dataframe(
+    ticker_table(
         top.style
         .map(col_pct, subset=pct_cols)
         .map(col_stage, subset=["Stage"])
@@ -1110,8 +1166,8 @@ def render_industry_block(ind_rs: pd.DataFrame, snap: pd.DataFrame,
                  "Ø-Umsatz 20T Mio $": fmt_num("{:,.0f}"),
                  "zum 52W-Hoch %": fmt_num("{:+.1f}"), "Ind-RS": fmt_num("{:.0f}"),
                  **{c: fmt_num("{:+.1f}") for c in pct_cols}}),
-        use_container_width=True, hide_index=True, height=42 + 35 * len(top),
-        key=f"ind_top_{key}")
+        top, key=f"ind_top_{key}", name_col="Unternehmen",
+        use_container_width=True, hide_index=True, height=42 + 35 * len(top))
     st.caption(f"{choice}: die {len(top)} groessten Titel nach Boersenwert "
                f"(von {int(ind_rs.loc[ind_rs['Industry'] == choice, 'n'].iloc[0])} "
                "im 1-Mrd-Universum). Stage = Unterphase aus dem Nachtlauf.")
@@ -1366,10 +1422,12 @@ if view == "Sector-Map":
                               .format({"RS Comp": fmt_num("{:+.2f}"),
                                        "RS Rang": fmt_num("{:.0f}"),
                                        "RS +/20": fmt_num("{:.0f}")}))
-            st.dataframe(styled_all, use_container_width=True,
-                         hide_index=True, height=42 + 35 * len(tbl_all))
+            ticker_table(styled_all, tbl_all, key="tbl_all", name_col="Name",
+                         use_container_width=True, hide_index=True,
+                         height=42 + 35 * len(tbl_all))
             st.caption(
-                "Sortiert nach 1D · Spaltenkopf anklicken zum Umsortieren · "
+                "Sortiert nach 1D · Spaltenkopf anklicken zum Umsortieren · Zeile "
+                "oder Ticker anklicken -> Detail-Chart darunter · "
                 "RVOL >= 1.5 hervorgehoben · RS Comp (14-Uhr-Briefing) = Mittel "
                 f"der Mehrleistung gegen {', '.join(RS_BENCH)} ueber "
                 f"{', '.join(map(str, RS_LOOKS))} Handelstage in ATR-Einheiten "
@@ -1408,13 +1466,23 @@ if view == "Futures / Makro":
                                     nm.iloc[0] if len(nm) else picked_f)
 
 # ----- Tab 4: OvsD (Offensiv vs. Defensiv) -----
-OVSD_UNIVERSE = pd.DataFrame({
-    "Ticker": ["XLK", "XLC", "XLY", "XLU", "XLV", "XLP"],
-    "Theme": ["Offensiv", "Offensiv", "Offensiv",
-              "Defensiv", "Defensiv", "Defensiv"],
-    "Name": ["XLK · Tech", "XLC · Comm", "XLY · Discretionary",
-             "XLU · Utilities", "XLV · Health", "XLP · Staples"],
-})
+# Offensiv/Defensiv = Kern des Indikators (3 gegen 3). Zyklisch, Value und
+# Growth stehen nur in Heatmap und Tabelle. Jeder Ticker genau einmal.
+_OVSD = [
+    ("XLK", "Offensiv", "XLK · Tech"), ("XLC", "Offensiv", "XLC · Comm"),
+    ("XLY", "Offensiv", "XLY · Discretionary"),
+    ("XLU", "Defensiv", "XLU · Utilities"), ("XLV", "Defensiv", "XLV · Health"),
+    ("XLP", "Defensiv", "XLP · Staples"),
+    ("XLB", "Zyklisch", "XLB · Materials"), ("XLE", "Zyklisch", "XLE · Energy"),
+    ("XLF", "Zyklisch", "XLF · Financials"), ("XLI", "Zyklisch", "XLI · Industrials"),
+    ("XLRE", "Zyklisch", "XLRE · Real Estate"),
+    ("IVE", "Value", "IVE · S&P 500 Value"), ("IJJ", "Value", "IJJ · MidCap 400 Value"),
+    ("IJS", "Value", "IJS · SmallCap 600 Value"),
+    ("IVW", "Growth", "IVW · S&P 500 Growth"), ("IJK", "Growth", "IJK · MidCap 400 Growth"),
+    ("IJT", "Growth", "IJT · SmallCap 600 Growth"),
+]
+OVSD_UNIVERSE = pd.DataFrame(_OVSD, columns=["Ticker", "Theme", "Name"])
+assert OVSD_UNIVERSE["Ticker"].is_unique
 
 if view == "OvsD":
     tfo = st.radio("Zeitfenster", list(TIMEFRAMES.keys()), horizontal=True,
@@ -1471,13 +1539,14 @@ if view == "OvsD":
                 return f"background-color: {NAVY_CARD}; color: #fff"
             return "color: #9fb0e8"
 
-        st.dataframe(
+        ticker_table(
             tbl_o.style
             .map(col_pct, subset=pct_o)
             .map(col_rvol_o, subset=["RVOL live", "RVOL VT"])
             .format({"Kurs": "{:,.2f}", "RVOL live": "{:.2f}",
                      "RVOL VT": "{:.2f}", "ATR-Ext": "{:+.1f}",
                      **{c: "{:+.2f} %" for c in pct_o}}),
+            tbl_o, key="tbl_ovsd", name_col="Name",
             use_container_width=True, hide_index=True,
             height=42 + 35 * len(tbl_o),
         )
@@ -1642,10 +1711,11 @@ if view == "Generaele":
             }).dropna()
             mem["vs SPY %"] = mem[f"{tfg} %"] - spy
             mem = mem.sort_values(f"{tfg} %", ascending=False)
-            st.dataframe(
+            ticker_table(
                 mem.style
                 .map(col_pct, subset=[f"{tfg} %", "vs SPY %"])
                 .format({f"{tfg} %": "{:+.2f} %", "vs SPY %": "{:+.2f} %"}),
+                mem, key=f"gen_mem_{sel_g}",
                 use_container_width=True, hide_index=True,
             )
         st.caption("Baskets editierbar im Tab 'Universum' (generals.csv): "
@@ -2159,7 +2229,7 @@ if view == "Scanner":
         st.markdown(f"**{len(scan_view)} Treffer** von {len(snap)} Titeln"
                     + (f" · ★ neu in der gespeicherten Liste: {len(new_set)}"
                        if new_set else ""))
-        ev_s = st.dataframe(
+        ticker_table(
             scan_view.style
             .map(col_pct, subset=["1D %", "1M %", "3M %"])
             .map(col_atrx, subset=["ATRx MA50"])
@@ -2171,16 +2241,9 @@ if view == "Scanner":
                       "AVOL Mio": "{:.2f}", "RVOL": "{:.2f}",
                       "1M %": "{:+.1f}", "3M %": "{:+.1f}",
                       "vom Hoch %": "{:+.1f}"}.items()}),
+            scan_view, key="scan_table", name_col="Name",
             use_container_width=True, hide_index=True,
-            height=min(42 + 35 * len(scan_view), 900), key="scan_table",
-            on_select="rerun", selection_mode="single-row")
-        try:
-            sel_rows = ev_s["selection"]["rows"]
-        except (TypeError, KeyError):
-            sel_rows = []
-        if sel_rows:
-            sym_s = str(scan_view.iloc[sel_rows[0]]["Ticker"])
-            render_detail_chart(sym_s, str(scan_view.iloc[sel_rows[0]]["Name"]))
+            height=min(42 + 35 * len(scan_view), 900))
 
         ex1, ex2 = st.columns(2)
         with ex1:
@@ -2764,26 +2827,20 @@ if view == "Theme Tracker":
                         .format(FMT_T))
 
             tbl_t = build_theme_table("member")
-            st.caption("Tipp: Zeile anklicken -> Detail-Chart darunter · "
+            st.caption("Tipp: Zeile oder Ticker anklicken -> Detail-Chart darunter · "
                        "MA-Spalten mint = Kurs darueber, rot = darunter · "
                        "Trend = Anzahl der MAs unter dem Kurs (0-4).")
-            ev_t = st.dataframe(style_theme(tbl_t), use_container_width=True,
-                                hide_index=True, key="theme_table",
-                                height=42 + 35 * len(tbl_t),
-                                on_select="rerun", selection_mode="single-row")
-            try:
-                rws_t = ev_t["selection"]["rows"]
-            except (TypeError, KeyError):
-                rws_t = []
-            if rws_t:
-                render_detail_chart(str(tbl_t.iloc[rws_t[0]]["Ticker"]),
-                                    str(tbl_t.iloc[rws_t[0]]["Aktie"]))
+            ticker_table(style_theme(tbl_t), tbl_t, key="theme_table",
+                         name_col="Aktie", use_container_width=True,
+                         hide_index=True, height=42 + 35 * len(tbl_t))
 
             bench_tbl = build_theme_table("benchmark")
             if not bench_tbl.empty:
                 st.markdown("#### Benchmarks")
-                st.dataframe(style_theme(bench_tbl), use_container_width=True,
-                             hide_index=True, height=42 + 35 * len(bench_tbl))
+                ticker_table(style_theme(bench_tbl), bench_tbl,
+                             key="theme_bench", name_col="Aktie",
+                             use_container_width=True, hide_index=True,
+                             height=42 + 35 * len(bench_tbl))
 
             missing_t = sorted({t for t in sub.loc[sub["Role"] == "member",
                                                    "Ticker"]
@@ -2809,11 +2866,12 @@ if view == "Theme Tracker":
                     return (f"background-color: {c}; color: #10182f; "
                             "font-weight: 700") if c else ""
 
-                st.dataframe(
+                ticker_table(
                     qt.style
                     .map(col_quad, subset=["Quadrant"])
                     .map(col_pct, subset=REL_C)
                     .format({c: fmt_num("{:+.1f}") for c in REL_C}),
+                    qt, key="theme_quad",
                     use_container_width=True, hide_index=True,
                     height=42 + 35 * len(qt))
                 cnt = rel_t["Quadrant"].value_counts()
