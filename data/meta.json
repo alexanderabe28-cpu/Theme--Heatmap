@@ -1,10 +1,10 @@
 {
-  "last_run_utc": "2026-11-27 04:33",
-  "last_date": "2026-11-25",
+  "last_run_utc": "2026-11-28 04:15",
+  "last_date": "2026-11-27",
   "tickers_requested": 4442,
   "tickers_loaded": 4442,
   "tickers_failed": 0,
-  "scan_hits": 135,
+  "scan_hits": 128,
   "industries_ranked": 114,
   "scan_config": {
     "min_price": 5,
